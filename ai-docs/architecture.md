@@ -1,7 +1,7 @@
 # Drone Stream Parser — Architecture
 
 **Date:** 2026-03-05
-**Status:** DRAFT — under discussion
+**Status:** FINAL — all decisions made
 **Standard:** C++20 | GCC 15.2.1 | CMake 4.2.3 | Linux
 
 ---
@@ -188,7 +188,165 @@ No data silently dropped — each stage drains its input before closing its outp
 
 ---
 
-## 5. Decisions Made
+## 5. Wire Format
+
+### Frame layout
+
+```
+Offset  Size   Field      Description
+------  ----   -----      -----------
+0       1      HEADER[0]  0xAA (fixed)
+1       1      HEADER[1]  0x55 (fixed)
+2       2      LENGTH     uint16_t, little-endian, byte count of PAYLOAD
+4       N      PAYLOAD    Serialized Telemetry (see below)
+4+N     2      CRC        uint16_t, little-endian, CRC16-CCITT over bytes [0..4+N-1]
+```
+
+### Telemetry payload serialization
+
+```
+Offset      Size       Field       Type
+------      ----       -----       ----
+0           2          id_len      uint16_t LE, byte count of drone_id
+2           id_len     drone_id    UTF-8 bytes, no null terminator
+2+id_len    8          latitude    double, IEEE 754 LE
+10+id_len   8          longitude   double, IEEE 754 LE
+18+id_len   8          altitude    double, IEEE 754 LE
+26+id_len   8          speed       double, IEEE 754 LE
+34+id_len   8          timestamp   uint64_t LE, Unix epoch milliseconds
+```
+
+Total payload size: `42 + id_len` bytes.
+
+- **Endianness:** little-endian (matches x86-64 target, no conversion needed)
+- **String prefix:** uint16_t (consistent with LENGTH field size)
+- **CRC variant:** CRC-16/CCITT (poly 0x1021, init 0x0000). Table-driven implementation.
+
+---
+
+## 6. State Machine Parser
+
+### States and transitions
+
+```
+HUNT_HEADER → READ_LENGTH → READ_PAYLOAD → READ_CRC → HUNT_HEADER
+     ↑              │                            │
+     │              │ length > MAX_PAYLOAD        │ CRC mismatch
+     └──────────────┴────────────────────────────┘
+                  resync: rewind to header_start + 1
+```
+
+1. **HUNT_HEADER** — scan byte-by-byte for 0xAA then 0x55
+2. **READ_LENGTH** — read 2 bytes → uint16_t. If > MAX_PAYLOAD (4096): resync
+3. **READ_PAYLOAD** — buffer `length` bytes
+4. **READ_CRC** — read 2 bytes, compute CRC over [header + length + payload]
+   - Match → deserialize Telemetry, emit via callback → HUNT_HEADER
+   - Mismatch → increment crc_fail_count, log, resync → HUNT_HEADER
+
+**Resync strategy:** On CRC failure or invalid length, rewind buffer read position to one byte after the 0xAA that started this packet attempt. The "header" we found may have been random data. Re-enter HUNT_HEADER to find the next real sync point. O(n), minimal data loss.
+
+**MAX_PAYLOAD guard (4096):** Prevents a malformed length field from causing unbounded memory allocation.
+
+**Parsing stats:** The parser tracks `crc_fail_count` and `malformed_count` internally. Accessible via getter methods. Logged by the composition root at shutdown. Not a domain concern.
+
+---
+
+## 7. Client Scenarios
+
+7 test scenarios covering all parser and domain paths:
+
+| Scenario | What it sends | What it tests |
+|----------|--------------|---------------|
+| `normal` | 1000 valid packets, 5 drone IDs | Happy path, basic packet processing |
+| `fragmented` | Same packets split into 1-3 byte TCP sends | Parser reassembly across recv() calls |
+| `corrupt` | 30% garbage + 20% bad CRC + 50% valid | Resync, CRC failure handling, no crash |
+| `stress` | Max-rate valid packets for 10 seconds | Throughput ≥ 1000 pkt/s requirement |
+| `alert` | Packets with altitude=150, speed=60 | Alert threshold detection and notification |
+| `multi-drone` | 100+ unique drone IDs | Drone table scaling, all tracked correctly |
+| `interleaved` | Multiple drones interleaved in stream | Correct per-drone state updates when mixed |
+
+---
+
+## 8. CMake Targets
+
+| Target | Type | Links | Contents |
+|--------|------|-------|----------|
+| `domain` | STATIC lib | — | Entities, VOs, use case, port interfaces |
+| `protocol` | STATIC lib | domain | Parser, serializer, CRC16 |
+| `common` | INTERFACE lib | — | BlockingQueue (header-only) |
+| `drone_server` | Executable | protocol, domain, common, Threads | Infra + composition root |
+| `drone_client` | Executable | protocol, domain | Test client tool |
+| `tests` | Executable | protocol, domain, GTest | Unit tests |
+
+---
+
+## 9. Project Directory Structure
+
+```
+drone-stream-parser/
+├── CMakeLists.txt                    # Root: project(), add_subdirectory()
+├── common/
+│   └── include/
+│       └── blocking_queue.hpp        # Thread-safe bounded queue (header-only)
+├── domain/
+│   ├── CMakeLists.txt
+│   ├── include/
+│   │   ├── telemetry.hpp             # Telemetry value object
+│   │   ├── drone.hpp                 # Drone entity
+│   │   ├── alert_types.hpp           # AlertType enum, AlertTransition
+│   │   ├── alert_policy.hpp          # AlertPolicy value object
+│   │   ├── i_drone_repository.hpp    # Port interface
+│   │   ├── i_alert_notifier.hpp      # Port interface
+│   │   └── process_telemetry.hpp     # Use case
+│   └── src/
+│       ├── drone.cpp
+│       └── process_telemetry.cpp
+├── protocol/
+│   ├── CMakeLists.txt
+│   ├── include/
+│   │   ├── stream_parser.hpp         # State machine parser
+│   │   ├── packet_serializer.hpp     # Telemetry → wire bytes
+│   │   └── crc16.hpp                 # CRC-16/CCITT
+│   └── src/
+│       ├── stream_parser.cpp
+│       ├── packet_serializer.cpp
+│       └── crc16.cpp
+├── server/
+│   ├── CMakeLists.txt
+│   ├── include/
+│   │   ├── tcp_server.hpp            # POSIX TCP listener
+│   │   ├── signal_handler.hpp        # SIGINT/SIGTERM handling
+│   │   ├── in_memory_drone_repo.hpp  # IDroneRepository impl
+│   │   └── console_alert_notifier.hpp # IAlertNotifier impl
+│   └── src/
+│       ├── main.cpp                  # Composition root
+│       ├── tcp_server.cpp
+│       ├── in_memory_drone_repo.cpp
+│       └── console_alert_notifier.cpp
+├── client/
+│   ├── CMakeLists.txt
+│   ├── include/
+│   │   └── packet_builder.hpp        # Builds valid/corrupt/garbage packets
+│   └── src/
+│       ├── main.cpp                  # CLI: --scenario, --host, --port
+│       └── packet_builder.cpp
+└── tests/
+    ├── CMakeLists.txt
+    ├── domain/
+    │   ├── drone_test.cpp
+    │   ├── process_telemetry_test.cpp
+    │   └── fakes/
+    │       ├── fake_drone_repository.hpp
+    │       └── fake_alert_notifier.hpp
+    └── protocol/
+        ├── parser_test.cpp
+        ├── serializer_test.cpp
+        └── crc16_test.cpp
+```
+
+---
+
+## 10. Decisions Made
 
 | # | Topic | Decision | Rationale |
 |---|-------|----------|-----------|
@@ -205,7 +363,7 @@ No data silently dropped — each stage drains its input before closing its outp
 | 11 | Driving port (input) | No interface | Use case receives Telemetry as plain data via execute() |
 | 12 | Driven ports (output) | IDroneRepository, IAlertNotifier | Use case defines, adapters implement |
 | 13 | Client binary | Separate binary | Independent test tool, not part of server architecture |
-| 14 | CRC16 | Internal to protocol boundary | Detail of parser/serializer, not architectural boundary |
+| 14 | CRC16 | CRC-16/CCITT, internal to protocol | Poly 0x1021, init 0x0000, table-driven |
 | 15 | Concurrency | 3-stage pipeline | Conceptually I/O vs processing; pipeline justified by spec + extensibility |
 | 16 | Queues | Bounded, by value with std::move | Back-pressure for embedded domain; move-efficient types |
 | 17 | Queue ownership | Composition root owns, stages borrow via reference | Constructor injection, RAII lifetime |
@@ -214,14 +372,9 @@ No data silently dropped — each stage drains its input before closing its outp
 | 20 | Shutdown | Cascade through pipeline | Q1.close() → Q2.close() → exit. No data dropped |
 | 21 | Error handling | Exceptions + noexcept + std::optional | Three tools: optional for absence, exceptions for failures, noexcept for pure logic |
 | 22 | Port signatures | optional for lookup, void+throw for mutation | findById→optional, save/notify→void (throw on failure) |
-
----
-
-## 6. Open Questions
-
-- [ ] **CMake targets** — one per boundary + common + executables
-- [ ] **State machine parser** — states, transitions, resync strategy
-- [ ] **Wire format** — byte-level packet layout
-- [ ] **Client scenarios** — what the test client covers
-- [ ] **Project directory structure** — file tree
-- [ ] **Parsing stats / CRC failure counting** — minor, decide during parser design
+| 23 | Directory layout | Flat — one dir per CMake target | Self-contained, matches targets 1:1 |
+| 24 | CMake targets | 6 targets | domain, protocol, common (INTERFACE), drone_server, drone_client, tests |
+| 25 | Wire format | uint16_t string prefix, little-endian, CRC-16/CCITT | Consistent field sizes, matches target platform |
+| 26 | Parser | 4-state machine, rewind resync | HUNT→LENGTH→PAYLOAD→CRC, MAX_PAYLOAD=4096 guard |
+| 27 | Parser stats | Internal to parser, getters for counts | Not a domain concern, logged at shutdown |
+| 28 | Client scenarios | 7 scenarios | normal, fragmented, corrupt, stress, alert, multi-drone, interleaved |
