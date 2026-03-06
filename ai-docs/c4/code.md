@@ -252,7 +252,7 @@ std::vector<uint8_t> serialize(const Telemetry& tel)
 1. Serialize `drone_id` as length-prefixed string
 2. Append doubles: latitude, longitude, altitude, speed (little-endian IEEE 754)
 3. Append `timestamp` as uint64_t (little-endian)
-4. Construct packet: `HEADER (0xAA55) | LENGTH | PAYLOAD | CRC16(all)`
+4. Construct packet: `HEADER (0xAA 0x55) | LENGTH | PAYLOAD | CRC16(all)`
 5. Return complete packet bytes
 
 **Responsibility**: Encode domain types to bytes

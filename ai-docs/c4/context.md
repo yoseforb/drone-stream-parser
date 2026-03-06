@@ -426,7 +426,7 @@ streams.
 | Constraint | Value |
 |------------|-------|
 | Transport protocol | TCP (no UDP, no TLS in scope) |
-| Packet framing | Binary: `[0xAA55][uint16_t LENGTH][PAYLOAD][CRC16]` |
+| Packet framing | Binary: `[0xAA 0x55 (fixed sync bytes)][uint16_t LENGTH (LE)][PAYLOAD][CRC16 (LE)]` |
 | Throughput target | >= 1,000 packets/second |
 | Platform | Linux (Ubuntu preferred), C++20, GCC |
 | Memory model | No external storage; in-process in-memory state only |

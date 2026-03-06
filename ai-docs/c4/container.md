@@ -124,7 +124,7 @@ Each logical telemetry message is encoded as:
 ┌─────────┬────────┬───────────────┬──────────┐
 │ HEADER  │ LENGTH │    PAYLOAD    │   CRC    │
 │ 2 bytes │ 2 bytes│  LENGTH bytes │ 2 bytes  │
-│ 0xAA55  │uint16_t│  Telemetry   │ CRC16    │
+│0xAA 0x55│uint16_t│  Telemetry   │ CRC16    │
 └─────────┴────────┴───────────────┴──────────┘
 
 Total wire size: 6 + LENGTH bytes
@@ -142,7 +142,8 @@ Telemetry payload fields (serialized inside PAYLOAD):
 | `speed` | `double` | 8 bytes, IEEE 754, little-endian |
 | `timestamp` | `uint64_t` | 8 bytes, Unix epoch ms, little-endian |
 
-All multi-byte fields are little-endian (matches x86-64 target). CRC variant is
+HEADER is a fixed byte sequence (0xAA then 0x55), not an integer — endianness does not apply.
+All multi-byte integer fields (LENGTH, CRC, payload doubles/uint64_t) are little-endian (matches x86-64 target). CRC variant is
 CRC-16/CCITT (polynomial 0x1021, init 0x0000), table-driven implementation.
 See ADR-008 for full wire format rationale.
 

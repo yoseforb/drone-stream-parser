@@ -245,7 +245,7 @@ at any position.
 
 ```
 Offset  Size    Field
-  0       2     HEADER  (0xAA 0x55, big-endian)
+  0       2     HEADER  (fixed byte sequence: 0xAA then 0x55, not an integer — endianness does not apply)
   2       2     LENGTH  (uint16_t, payload size in bytes)
   4     LENGTH  PAYLOAD (serialized Telemetry)
   4+L     2     CRC16   (over bytes [0 .. 4+LENGTH-1])
