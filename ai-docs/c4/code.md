@@ -761,11 +761,10 @@ stateDiagram-v2
     HUNT_HEADER --> READ_LENGTH: found 0xAA55
     HUNT_HEADER --> HUNT_HEADER: scan for header
 
-    READ_LENGTH --> READ_PAYLOAD: got 2 bytes
-    READ_LENGTH --> HUNT_HEADER: error
+    READ_LENGTH --> READ_PAYLOAD: valid length
+    READ_LENGTH --> HUNT_HEADER: length > MAX_PAYLOAD (resync)
 
     READ_PAYLOAD --> READ_CRC: collected N bytes
-    READ_PAYLOAD --> HUNT_HEADER: error
 
     READ_CRC --> VALIDATE: got 2 bytes
 
