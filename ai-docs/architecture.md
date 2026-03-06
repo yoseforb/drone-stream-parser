@@ -378,3 +378,5 @@ drone-stream-parser/
 | 26 | Parser | 4-state machine, rewind resync | HUNT→LENGTH→PAYLOAD→CRC, MAX_PAYLOAD=4096 guard |
 | 27 | Parser stats | Internal to parser, getters for counts | Not a domain concern, logged at shutdown |
 | 28 | Client scenarios | 7 scenarios | normal, fragmented, corrupt, stress, alert, multi-drone, interleaved |
+| 29 | Integration verification | Structured stdout + shutdown summary | No query API. Unit tests prove correctness; client demos + console output for examiner |
+| 30 | Logging | spdlog via FetchContent (compiled) | De facto C++ standard. Leveled, structured, fast. Common utility available to all boundaries. |
