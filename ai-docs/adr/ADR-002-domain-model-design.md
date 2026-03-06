@@ -8,6 +8,8 @@
 
 The domain needs to model drones receiving telemetry updates and generating alerts when thresholds are breached. Key design tensions: whether to extract a Position value object from Drone's coordinate fields, whether Drone should be a rich or anemic entity, and how to model alert state — specifically whether to use enums, booleans, or a set, and how to communicate state changes to the use case.
 
+The domain model follows DDD (Domain-Driven Design) principles: Entities have identity and own their state + behavior. Value Objects are immutable data carriers with no identity. Policy objects (like AlertPolicy) are external configuration — they govern how evaluation happens but are not intrinsic to any entity. This distinction matters for the Drone entity: the Drone owns its alert evaluation *behavior* (the `updateFrom()` logic) but does not own the alert *thresholds* (AlertPolicy). Thresholds are system-level configuration injected per-call, keeping the entity's state clean and avoiding policy storage concerns in the repository.
+
 ## Decision
 
 **Drone entity (rich, identity by drone_id):**

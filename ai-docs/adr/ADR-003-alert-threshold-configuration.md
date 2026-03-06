@@ -12,6 +12,8 @@ Alert thresholds (altitude limit, speed limit) need to be configurable, but the 
 
 Use an `AlertPolicy` value object with constexpr defaults (120.0m altitude, 50.0 m/s speed). The composition root constructs AlertPolicy and injects it into the use case. The design allows future override from CLI args or a config file without changing any domain code.
 
+**DDD rationale for per-call injection (not a Drone field):** AlertPolicy is a policy object — it governs *how* evaluation happens, but is not intrinsic to the Drone entity. In DDD terms, the Drone owns its evaluation *behavior* (`updateFrom()` logic), but the *thresholds* are system-level configuration. If AlertPolicy were a Drone field, `IDroneRepository` would need to persist and restore it, leaking policy concerns into the repository. Per-call injection keeps entity state clean: the composition root owns the policy, the use case threads it through, and the Drone applies it.
+
 ## Alternatives Considered
 
 - **Config file (YAML/JSON/TOML)** — rejected. Adding a parser dependency for two numbers is over-engineering. If needed later, AlertPolicy's constructor is the single injection point.

@@ -78,7 +78,15 @@ Each boundary catches a **real category of bugs independently**. None is ceremon
 
 ---
 
-## 2. Domain Model
+## 2. Domain Model (DDD)
+
+This project follows Domain-Driven Design (DDD) principles for the domain boundary:
+- **Entities** have identity and mutable state (Drone, identified by drone_id)
+- **Value Objects** are immutable, identity-less data carriers (Telemetry, AlertType, AlertTransition, AlertPolicy)
+- **Use Cases** orchestrate domain operations without owning business logic (ProcessTelemetry)
+- **Ports** are domain-defined interfaces for infrastructure concerns (IDroneRepository, IAlertNotifier)
+- **Rich Entity pattern:** behavior lives with the data that it operates on (Drone owns updateFrom() logic)
+- **Policy objects** are external to entities — AlertPolicy is a configuration injected per-call, not owned by Drone. The Drone knows *how* to evaluate alerts (behavior), but the *thresholds* are provided by the system (policy). This keeps entity state clean and avoids leaking policy storage into the repository.
 
 ### Entity: Drone
 
@@ -358,6 +366,7 @@ drone-stream-parser/
 | 4 | Dependency direction | Inward only | Infrastructure → Protocol → Domain |
 | 5 | Position value object | No — keep flat | YAGNI, no position-specific behavior |
 | 6 | Drone entity | Rich entity | Owns updateFrom() + alert state logic |
+| 6a | Domain modeling | DDD principles | Entities (identity+state+behavior), Value Objects (immutable data), Ports (domain-defined interfaces), Policy objects (external to entities) |
 | 7 | Alert model | Hybrid | Drone tracks state, use case decides when to notify (transitions) |
 | 8 | Alert state | std::set&lt;AlertType&gt; | Extensible, no combinatorial explosion |
 | 9 | Update result | vector&lt;AlertTransition&gt; | Drone reports what changed, use case acts on it |

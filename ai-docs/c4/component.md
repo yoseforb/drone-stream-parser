@@ -26,7 +26,9 @@ common utility. Components are listed by boundary below.
 ### 1.1 Domain Boundary
 
 The innermost boundary. Zero external dependencies. Pure C++20. Fully unit-tested
-with fakes for ports.
+with fakes for ports. Modeled using DDD principles: Entities (identity + state + behavior),
+Value Objects (immutable, no identity), Policy Objects (external configuration), Use Cases
+(orchestration), and Ports (domain-defined interfaces for infrastructure).
 
 ---
 

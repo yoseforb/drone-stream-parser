@@ -30,6 +30,13 @@ Domain  Protocol    Infrastructure           Common
 
 **Purpose**: Pure business logic isolated from I/O and infrastructure concerns.
 
+**DDD Classification**:
+- **Entity**: Drone — has identity (`drone_id`), mutable state, and behavior (`updateFrom()`)
+- **Value Objects**: Telemetry, AlertType, AlertTransition — immutable, no identity, compared by value
+- **Policy Object**: AlertPolicy — external configuration governing evaluation thresholds, not owned by any entity. Injected per-call to keep entity state clean and avoid leaking policy storage into the repository.
+- **Use Case**: ProcessTelemetry — orchestrates domain operations, owns no business logic itself
+- **Ports**: IDroneRepository, IAlertNotifier — domain-defined interfaces for infrastructure concerns
+
 **Characteristics**:
 - Zero external dependencies
 - All functions `noexcept` (cannot fail)
@@ -112,7 +119,8 @@ std::vector<AlertTransition> updateFrom(
 - `getAlertState() const → const std::set<AlertType>&` — returns current alerts
 
 **Design Rationale**:
-- Rich entity pattern: behavior lives with data
+- Rich entity pattern (DDD): behavior lives with data — Drone owns its update and alert evaluation logic
+- AlertPolicy is NOT a Drone field — it is a policy object, external to the entity. The Drone knows *how* to evaluate (behavior), but thresholds come from outside (system configuration). This avoids leaking policy storage into IDroneRepository.
 - `std::set<AlertType>` allows future alert types without code changes
 - No separate Position value object (YAGNI)
 
