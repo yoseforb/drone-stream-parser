@@ -224,18 +224,21 @@ at any position.
 
 **Software Features**
 
-- Implements a 4-state machine: `SYNC -> LENGTH -> PAYLOAD -> CRC`.
-- **SYNC:** Scans byte-by-byte for the 2-byte header `0xAA55`. Handles partial header
+- Implements a 4-state machine: `HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC`.
+- **HUNT_HEADER:** Scans byte-by-byte for the 2-byte header `0xAA55`. Handles partial header
   matches correctly (e.g., `0xAA` at end of buffer followed by `0x55` at start of
   next buffer).
-- **LENGTH:** Reads `uint16_t` payload length (2 bytes, little-endian). Rejects
-  implausible lengths and resyncs.
-- **PAYLOAD:** Buffers bytes until the declared payload length is accumulated.
+- **READ_LENGTH:** Reads `uint16_t` payload length (2 bytes, little-endian). Rejects
+  lengths > MAX_PAYLOAD (4096) and resyncs. The MAX_PAYLOAD guard prevents a malformed
+  length field from causing unbounded memory allocation.
+- **READ_PAYLOAD:** Buffers bytes until the declared payload length is accumulated.
   Handles fragmentation transparently.
-- **CRC:** Validates CRC16 over `HEADER + LENGTH + PAYLOAD`. On mismatch: logs the
-  failure, increments a CRC failure counter, drops back to SYNC state (resync). Never
+- **READ_CRC:** Validates CRC16 over `HEADER + LENGTH + PAYLOAD`. On mismatch: logs the
+  failure, increments a CRC failure counter, drops back to HUNT_HEADER state (resync). Never
   crashes on malformed input.
 - On valid packet: deserializes payload into `Telemetry`, emits it via callback.
+- Tracks `crc_fail_count` and `malformed_count` internally. Accessible via getter methods.
+  Logged by the composition root at shutdown.
 - Marked `noexcept` on `feed()` — parsing is pure logic that cannot fail.
 
 **Wire Packet Format**
@@ -258,6 +261,7 @@ onTelemetry: std::function<void(Telemetry)>
 
 // Diagnostics:
 crc_failure_count() -> uint64_t    noexcept
+malformed_count() -> uint64_t      noexcept
 ```
 
 **Dependencies:** Telemetry (Domain), CRC16 (Protocol).
@@ -278,7 +282,7 @@ available to the server if it ever needs to send packets back.
 **Software Features**
 
 - Serializes all `Telemetry` fields into a binary payload (fixed-width fields,
-  null-terminated or length-prefixed string for `drone_id`).
+  uint16_t length-prefixed string for `drone_id`).
 - Frames the payload with `HEADER (0xAA55)` and `LENGTH`.
 - Computes and appends CRC16 over the full frame.
 - Returns a `std::vector<uint8_t>` — caller owns and sends.
@@ -306,8 +310,7 @@ serializer (generation). Implemented as a free function — no state, no side ef
 **Software Features**
 
 - Computes CRC16 over an arbitrary byte span.
-- Standard CRC16 polynomial (exact polynomial TBD during parser design — see open
-  questions in architecture.md).
+- CRC-16/CCITT: polynomial 0x1021, init 0x0000. Table-driven implementation.
 - Marked `noexcept` — pure arithmetic, cannot fail.
 
 **Interface**
@@ -544,6 +547,37 @@ optional).
 
 ---
 
+#### Component: spdlog
+
+- **Name:** spdlog
+- **Type:** Logging Library (compiled, via FetchContent)
+
+**Purpose**
+
+Provides structured, leveled, thread-safe logging across all boundaries. The de facto
+standard C++ logging library — equivalent to Go's built-in `log`/`slog`. Available to
+all boundaries as a common utility, same treatment as BlockingQueue.
+
+**Software Features**
+
+- Leveled logging: trace, debug, info, warn, error, critical.
+- Thread-safe by default — critical for the multi-threaded pipeline.
+- Structured output with timestamps, log levels, and message formatting via fmt.
+- Used across all boundaries: infrastructure logs TCP events, protocol logs CRC failures
+  and resync, domain logs alert transitions, composition root logs startup/shutdown
+  summaries.
+- Compiled mode (not header-only) for faster incremental builds across multiple
+  translation units.
+
+**Integration**
+
+- Fetched via FetchContent in root `CMakeLists.txt`.
+- All targets link `spdlog::spdlog`.
+
+**Dependencies:** None (third-party library, self-contained).
+
+---
+
 ## 2. Client Binary — Component Map
 
 The client binary is a separate executable. It is not part of the server architecture.
@@ -552,79 +586,63 @@ realistic and adversarial conditions.
 
 ---
 
-#### Component: TcpClient
+#### Component: Client main.cpp
 
-- **Name:** TcpClient
-- **Type:** TCP Connection Manager
+- **Name:** client main.cpp
+- **Type:** Composition Root / CLI Entry Point
 
 **Purpose**
 
-Establishes a TCP connection to the server and provides a `send(bytes)` primitive for
-the test scenario generator. Handles connection setup and teardown.
+The client's entry point. Parses CLI arguments, creates a TCP connection, and drives
+the selected test scenario using PacketBuilder.
 
 **Software Features**
 
-- Connects to a configurable host:port (default `localhost:PORT`).
-- Exposes a `send(span<const uint8_t>)` method — blocking, sends all bytes.
-- Closes the connection cleanly on destruction (RAII).
+- CLI arguments: `--scenario` (selects which scenario to run), `--host` (server
+  hostname, default `localhost`), `--port` (server port).
+- Creates a TCP socket connection to the server.
+- Runs the selected scenario, sending packets over TCP.
+- Handles connection setup and teardown (RAII).
 
-**Interface**
-
-```
-TcpClient(const std::string& host, uint16_t port)
-
-send(std::span<const uint8_t> bytes) -> void    // throws on socket error
-~TcpClient()                                    // closes socket
-```
-
-**Dependencies:** POSIX sockets.
+**Dependencies:** PacketBuilder, PacketSerializer (Protocol boundary), Telemetry (Domain),
+POSIX sockets.
 
 ---
 
-#### Component: TestScenarioGenerator
+#### Component: PacketBuilder
 
-- **Name:** TestScenarioGenerator
+- **Name:** PacketBuilder
 - **Type:** Test Traffic Producer
+- **File:** `client/include/packet_builder.hpp`, `client/src/packet_builder.cpp`
 
 **Purpose**
 
-Creates synthetic `Telemetry` values covering the scenarios required to validate the
-server: normal packets, altitude/speed alert triggers, fragmented delivery, corrupted
-bytes, and high-throughput sustained load.
+Builds valid, corrupt, and garbage packets for all test scenarios. Provides the
+synthetic telemetry and wire-format byte sequences needed to exercise the server's
+parser and domain logic under realistic and adversarial conditions.
 
 **Software Features**
 
-- **Normal telemetry:** Valid drone readings below alert thresholds.
-- **Altitude alert scenario:** Telemetry with `altitude > 120.0 m` to trigger
-  `ALTITUDE` alert.
-- **Speed alert scenario:** Telemetry with `speed > 50.0 m/s` to trigger `SPEED`
-  alert.
-- **Alert cleared scenario:** Follow-up readings that bring values back below
-  thresholds, exercising the transition-cleared path.
-- **Fragmented delivery:** Serializes a valid packet then sends it in multiple
-  `send()` calls with arbitrary split points.
-- **Corrupted bytes:** Inserts random byte values into the stream to exercise the
-  parser's resync logic.
-- **CRC corruption:** Sends a validly-framed packet with a deliberately wrong CRC to
-  exercise the CRC failure path.
-- **High throughput:** Sends packets in a tight loop to verify >= 1000 packets/second
-  handling (performance requirement from spec).
-- Uses `PacketSerializer` to produce correctly-framed packets.
+- Builds valid packets via `PacketSerializer` for normal and alert scenarios.
+- Builds corrupt packets: validly-framed packets with deliberately wrong CRC, random
+  garbage bytes injected into the stream.
+- Builds fragmented delivery sequences: valid packets split into arbitrary chunk sizes
+  for testing parser reassembly.
+- Supports all 7 client scenarios:
+  - **normal:** 1000 valid packets, 5 drone IDs. Happy path, basic packet processing.
+  - **fragmented:** Same packets split into 1-3 byte TCP sends. Tests parser
+    reassembly across `recv()` calls.
+  - **corrupt:** 30% garbage + 20% bad CRC + 50% valid. Tests resync, CRC failure
+    handling, no crash.
+  - **stress:** Max-rate valid packets for 10 seconds. Tests throughput >= 1000 pkt/s.
+  - **alert:** Packets with altitude=150, speed=60. Tests alert threshold detection
+    and notification.
+  - **multi-drone:** 100+ unique drone IDs. Tests drone table scaling, all tracked
+    correctly.
+  - **interleaved:** Multiple drones interleaved in stream. Tests correct per-drone
+    state updates when mixed.
 
-**Interface**
-
-```
-TestScenarioGenerator(TcpClient& client)
-
-run_all_scenarios() -> void
-run_normal(int count) -> void
-run_alert_triggers() -> void
-run_fragmented(int split_byte) -> void
-run_corrupted_stream(int corrupt_count) -> void
-run_throughput(int packet_count) -> void
-```
-
-**Dependencies:** TcpClient, PacketSerializer (Protocol boundary), Telemetry (Domain).
+**Dependencies:** PacketSerializer (Protocol boundary), Telemetry (Domain).
 
 ---
 
@@ -648,7 +666,7 @@ C4Component
         }
 
         Container_Boundary(protocol, "Protocol Boundary") {
-            Component(streamParser, "StreamParser", "State Machine", "SYNC->LENGTH->PAYLOAD->CRC; resync on CRC failure; emits Telemetry via callback")
+            Component(streamParser, "StreamParser", "State Machine", "HUNT_HEADER->READ_LENGTH->READ_PAYLOAD->READ_CRC; MAX_PAYLOAD=4096 guard; resync on CRC failure; emits Telemetry via callback")
             Component(packetSerializer, "PacketSerializer", "Serializer", "Telemetry -> framed wire bytes with CRC16")
             Component(crc16, "CRC16", "Pure Function", "CRC16 over byte span; noexcept")
         }
@@ -696,13 +714,13 @@ C4Component
     title Component Diagram: Client Binary (client)
 
     Container_Boundary(client, "Client Binary (client)") {
-        Component(tcpClient, "TcpClient", "TCP Connection", "Connects to server; send(bytes); RAII close")
-        Component(scenarioGen, "TestScenarioGenerator", "Test Producer", "Generates: normal, alert, fragmented, corrupted, high-throughput scenarios")
+        Component(clientMain, "client main.cpp", "CLI Entry Point", "Parses --scenario, --host, --port; creates TCP connection; drives selected scenario")
+        Component(packetBuilder, "PacketBuilder", "Test Producer", "Builds valid/corrupt/garbage packets for all 7 scenarios: normal, fragmented, corrupt, stress, alert, multi-drone, interleaved")
     }
 
     Container_Boundary(protocolShared, "Protocol Boundary (shared)") {
         Component(packetSerializerC, "PacketSerializer", "Serializer", "Telemetry -> framed wire bytes with CRC16")
-        Component(crc16C, "CRC16", "Pure Function", "CRC16 over byte span")
+        Component(crc16C, "CRC16", "Pure Function", "CRC-16/CCITT over byte span")
     }
 
     Container_Boundary(domainShared, "Domain Boundary (shared)") {
@@ -711,11 +729,11 @@ C4Component
 
     System_Ext(serverBinary, "Server Binary", "Listens on TCP; parses stream; processes telemetry")
 
-    Rel(scenarioGen, tcpClient, "sends bytes via")
-    Rel(scenarioGen, packetSerializerC, "serializes Telemetry via")
+    Rel(clientMain, packetBuilder, "uses to build packets")
+    Rel(packetBuilder, packetSerializerC, "serializes Telemetry via")
     Rel(packetSerializerC, telemetryC, "reads")
     Rel(packetSerializerC, crc16C, "uses")
-    Rel(tcpClient, serverBinary, "sends byte stream over TCP")
+    Rel(clientMain, serverBinary, "sends byte stream over TCP")
 ```
 
 ### 3.3 Cross-Binary Dependency and Data Flow
@@ -732,7 +750,7 @@ C4Component
     }
 
     Container_Boundary(clientBin, "Client Binary") {
-        Component(cScenario, "TestScenarioGenerator", "Test Producer", "Generates test traffic")
+        Component(cScenario, "PacketBuilder", "Test Producer", "Generates test traffic")
         Component(cClient, "TcpClient", "TCP Client", "Sends bytes to server")
     }
 
@@ -755,8 +773,8 @@ Infrastructure --> Protocol --> Domain
       +-----> Common <-+
 
 Client:
-  TestScenarioGenerator --> PacketSerializer (Protocol) --> Telemetry (Domain)
-  TestScenarioGenerator --> TcpClient --> [TCP] --> Server Infrastructure
+  PacketBuilder --> PacketSerializer (Protocol) --> Telemetry (Domain)
+  PacketBuilder --> TcpClient --> [TCP] --> Server Infrastructure
 ```
 
 Rules enforced:
@@ -850,6 +868,6 @@ signal downstream.
 | Component | Type |
 |-----------|------|
 | TcpClient | TCP Connection Manager |
-| TestScenarioGenerator | Test Traffic Producer |
+| PacketBuilder | Test Traffic Producer |
 | PacketSerializer (shared with server) | Protocol Boundary (reused) |
 | Telemetry (shared with server) | Domain Boundary (reused) |

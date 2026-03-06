@@ -4,7 +4,7 @@
 
 - **Name**: Drone Stream Parser — Multi-threaded C++ Telemetry Processing System
 - **Description**: A streaming parser with state machine resynchronization that processes incoming binary telemetry data from drone connections. Validates packets with CRC16, deserializes telemetry, maintains drone state, and triggers alerts on threshold violations. Uses a 3-stage pipeline with bounded queues for backpressure.
-- **Location**: `/home/yoseforb/pkg/drone-stream-parser/drone-stream-parser/src/`
+- **Location**: `/home/yoseforb/pkg/drone-stream-parser/drone-stream-parser/`
 - **Language**: C++20
 - **Standard**: Linux (Ubuntu), GCC 15.2.1, CMake 4.2.3
 - **Purpose**: Real-time embedded telemetry streaming with robust recovery from packet loss, corruption, and partial arrival
@@ -26,7 +26,7 @@ Composition Root (main.cpp)
 Domain  Protocol    Infrastructure           Common
 ```
 
-### 1. Domain Boundary (src/domain/)
+### 1. Domain Boundary (domain/)
 
 **Purpose**: Pure business logic isolated from I/O and infrastructure concerns.
 
@@ -40,7 +40,7 @@ Domain  Protocol    Infrastructure           Common
 
 **Telemetry**
 - **Type**: `struct`
-- **Location**: `src/domain/telemetry.hpp`
+- **Location**: `domain/include/telemetry.hpp`
 - **Purpose**: Immutable snapshot of drone state at a point in time
 - **Fields**:
   - `drone_id: std::string` — unique identifier for this drone
@@ -54,7 +54,7 @@ Domain  Protocol    Infrastructure           Common
 
 **AlertType**
 - **Type**: `enum`
-- **Location**: `src/domain/alert_type.hpp`
+- **Location**: `domain/include/alert_type.hpp`
 - **Purpose**: Enumeration of possible alert conditions
 - **Values**: `ALTITUDE`, `SPEED`
 - **Responsibility**: Type-safe alert classification
@@ -62,7 +62,7 @@ Domain  Protocol    Infrastructure           Common
 
 **AlertTransition**
 - **Type**: `struct`
-- **Location**: `src/domain/alert_transition.hpp`
+- **Location**: `domain/include/alert_transition.hpp`
 - **Purpose**: Represents a change in drone alert state
 - **Fields**:
   - `type: AlertType` — which alert transitioned
@@ -72,7 +72,7 @@ Domain  Protocol    Infrastructure           Common
 
 **AlertPolicy**
 - **Type**: `struct`
-- **Location**: `src/domain/alert_policy.hpp`
+- **Location**: `domain/include/alert_policy.hpp`
 - **Purpose**: Configuration for alert threshold evaluation
 - **Fields**:
   - `altitude_limit: double` — default 120.0 meters
@@ -84,7 +84,7 @@ Domain  Protocol    Infrastructure           Common
 #### Entity: Drone
 
 **Type**: `class`
-**Location**: `src/domain/drone.hpp`
+**Location**: `domain/include/drone.hpp`
 **Purpose**: Stateful entity representing a single drone with identity and alert history
 
 **Identity**: `drone_id: std::string` (uniquely identifies across system lifetime)
@@ -118,7 +118,7 @@ std::vector<AlertTransition> updateFrom(
 #### Use Case: ProcessTelemetry
 
 **Type**: `class`
-**Location**: `src/domain/process_telemetry.hpp`
+**Location**: `domain/include/process_telemetry.hpp`
 **Purpose**: Application logic orchestrating drone state updates and alert notifications
 
 **Constructor**:
@@ -153,14 +153,14 @@ void execute(const Telemetry& telemetry)
 #### Port Interface: IDroneRepository
 
 **Type**: `interface (pure abstract class)`
-**Location**: `src/domain/i_drone_repository.hpp`
+**Location**: `domain/include/i_drone_repository.hpp`
 **Purpose**: Abstraction for drone persistence (read/write)
 
 **Methods**:
 
 | Method | Signature | Semantics |
 |--------|-----------|-----------|
-| `findById()` | `findById(const std::string& drone_id) → std::optional<Drone>` | Returns drone copy or `std::nullopt` if new (not an error). Throws on I/O failure. |
+| `findById()` | `findById(const std::string& drone_id) → std::optional<Drone>` | Returns drone copy or `std::nullopt` if new (not an error). |
 | `save()` | `save(const Drone& drone) → void` | Persists drone state. Throws on I/O failure. |
 
 **Design Rationale**:
@@ -170,7 +170,7 @@ void execute(const Telemetry& telemetry)
 #### Port Interface: IAlertNotifier
 
 **Type**: `interface (pure abstract class)`
-**Location**: `src/domain/i_alert_notifier.hpp`
+**Location**: `domain/include/i_alert_notifier.hpp`
 **Purpose**: Abstraction for alert notification channel
 
 **Methods**:
@@ -185,7 +185,7 @@ void execute(const Telemetry& telemetry)
 
 ---
 
-### 2. Protocol Boundary (src/protocol/)
+### 2. Protocol Boundary (protocol/)
 
 **Purpose**: Packet parsing, serialization, and CRC validation. Stateful state machine for handling fragmented/corrupted streams.
 
@@ -204,7 +204,7 @@ void execute(const Telemetry& telemetry)
 
 | Field | Size | Endianness | Purpose |
 |-------|------|-----------|---------|
-| `HEADER` | 2 bytes | little-endian | Fixed sentinel `0xAA55` for packet boundary |
+| `HEADER` | 2 bytes | fixed pattern | Fixed byte sequence `0xAA 0x55` for packet boundary |
 | `LENGTH` | 2 bytes (uint16_t) | little-endian | Size of PAYLOAD in bytes |
 | `PAYLOAD` | LENGTH bytes | variable | Serialized Telemetry struct |
 | `CRC` | 2 bytes (uint16_t) | little-endian | CRC16 checksum over HEADER + LENGTH + PAYLOAD |
@@ -220,7 +220,7 @@ void execute(const Telemetry& telemetry)
 #### crc16() Function
 
 **Type**: `function`
-**Location**: `src/protocol/crc16.hpp`
+**Location**: `protocol/include/crc16.hpp`
 **Signature**:
 ```cpp
 uint16_t crc16(std::span<const uint8_t> data) noexcept
@@ -240,12 +240,12 @@ uint16_t crc16(std::span<const uint8_t> data) noexcept
 #### PacketSerializer
 
 **Type**: `class`
-**Location**: `src/protocol/packet_serializer.hpp`
+**Location**: `protocol/include/packet_serializer.hpp`
 **Purpose**: Serialize Telemetry struct into wire-format bytes for transmission
 
 **Method**:
 ```cpp
-std::vector<uint8_t> serialize(const Telemetry& tel) noexcept
+std::vector<uint8_t> serialize(const Telemetry& tel)
 ```
 
 **Execution**:
@@ -259,21 +259,24 @@ std::vector<uint8_t> serialize(const Telemetry& tel) noexcept
 
 **Dependencies**: `Telemetry`, `crc16()` function
 
-**Design Notes**: `noexcept` because serialization is deterministic (always succeeds)
+**Design Notes**: Serialization is deterministic but allocates (`std::vector`), so not marked `noexcept`
 
 #### StreamParser (State Machine)
 
 **Type**: `class`
-**Location**: `src/protocol/stream_parser.hpp`
+**Location**: `protocol/include/stream_parser.hpp`
 **Purpose**: Parse incoming byte stream into complete packets. Handle fragmentation, corruption, and automatic resynchronization.
 
 **State Enumeration**:
 ```
-WAITING_HEADER    → scan for 0xAA55 byte pattern
-READING_LENGTH    → collect 2-byte length field
-READING_PAYLOAD   → collect N bytes of payload data
-READING_CRC       → collect 2-byte CRC field
+HUNT_HEADER       → scan byte-by-byte for 0xAA then 0x55
+READ_LENGTH       → collect 2-byte length field
+READ_PAYLOAD      → collect N bytes of payload data
+READ_CRC          → collect 2-byte CRC field
 ```
+
+**Constants**:
+- `MAX_PAYLOAD = 4096` — maximum allowed payload size in bytes. If the parsed length field exceeds this value, the packet is rejected and the parser resyncs from the byte after the last header position.
 
 **Constructor**:
 ```cpp
@@ -287,31 +290,32 @@ void feed(std::span<const uint8_t> chunk) noexcept
 
 **State Execution Logic**:
 
-1. **WAITING_HEADER**:
-   - Scan chunk for sequence `0x55 0xAA` (little-endian)
-   - On match: advance to `READING_LENGTH`, record header position
+1. **HUNT_HEADER**:
+   - Scan chunk for sequence `0xAA 0x55`
+   - On match: advance to `READ_LENGTH`, record header position
    - On non-match: discard chunk
 
-2. **READING_LENGTH**:
+2. **READ_LENGTH**:
    - Accumulate bytes until 2 bytes collected
    - Interpret as `uint16_t` length value
-   - Advance to `READING_PAYLOAD`
+   - If length > `MAX_PAYLOAD` (4096): reject, resync from byte after last header position, return to `HUNT_HEADER`
+   - Advance to `READ_PAYLOAD`
 
-3. **READING_PAYLOAD**:
+3. **READ_PAYLOAD**:
    - Accumulate payload bytes until `length` bytes collected
-   - Advance to `READING_CRC`
+   - Advance to `READ_CRC`
 
-4. **READING_CRC**:
+4. **READ_CRC**:
    - Accumulate 2 bytes
    - Compute CRC16 over HEADER + LENGTH + PAYLOAD
    - Compare to received CRC
    - **If match** (valid packet):
      - Deserialize PAYLOAD → Telemetry
      - Invoke callback with Telemetry
-     - Reset to `WAITING_HEADER`
+     - Reset to `HUNT_HEADER`
    - **If mismatch** (corrupted packet):
      - Rewind: resume scanning from byte after last header position (resync)
-     - Return to `WAITING_HEADER`
+     - Return to `HUNT_HEADER`
 
 **Responsibility**:
 - Implement resilient parsing with automatic recovery
@@ -332,7 +336,7 @@ void feed(std::span<const uint8_t> chunk) noexcept
 
 ---
 
-### 3. Infrastructure Boundary (src/infrastructure/)
+### 3. Infrastructure Boundary (server/)
 
 **Purpose**: OS-level integration, I/O, concurrency, and port implementations.
 
@@ -345,14 +349,13 @@ void feed(std::span<const uint8_t> chunk) noexcept
 #### TcpServer
 
 **Type**: `class`
-**Location**: `src/infrastructure/tcp_server.hpp`
-**Purpose**: Multi-threaded TCP listener that accepts connections and feeds received bytes to parser
+**Location**: `server/include/tcp_server.hpp`
+**Purpose**: TCP listener that accepts connections and pushes raw received bytes to Q1. Does NOT parse -- parsing is a separate stage (Thread 2).
 
 **Constructor**:
 ```cpp
 TcpServer(
     uint16_t port,
-    StreamParser& parser,
     BlockingQueue<std::vector<uint8_t>>& output_queue,
     const std::atomic<bool>& stop_flag
 )
@@ -360,35 +363,33 @@ TcpServer(
 
 **Parameters**:
 - `port`: TCP port to listen on (e.g., 5000)
-- `parser`: reference to StreamParser for feeding bytes
-- `output_queue`: destination queue for deserialized Telemetry
+- `output_queue`: destination queue for raw byte chunks (Q1)
 - `stop_flag`: atomic reference to graceful shutdown signal
 
 **Methods**:
 
 | Method | Signature | Behavior |
 |--------|-----------|----------|
-| `run()` | `void run()` | Main event loop: accept connection, recv bytes in loop, feed to parser. Blocks until `stop_flag` set or I/O error. |
+| `run()` | `void run()` | Main event loop: accept connection, recv bytes in loop, push to Q1. Blocks until `stop_flag` set or I/O error. |
 
 **Execution Flow**:
-1. Create and bind socket to address `0.0.0.0:port`
+1. Create and bind socket to configurable bind address and port
 2. Listen for incoming connections
 3. On connection: recv bytes in chunks (e.g., 4KB at a time)
-4. On data: call `parser.feed(chunk)` (stateful)
-5. Parser's callback invokes `output_queue.push(Telemetry)`
-6. On recv error or `stop_flag` set: close socket, call `output_queue.close()`, exit
+4. On data: call `output_queue.push(std::move(chunk))`
+5. On recv error or `stop_flag` set: close socket, call `output_queue.close()`, exit
 
 **Responsibility**:
 - POSIX TCP socket setup and acceptance
 - Non-blocking or event-driven recv loop
 - Backpressure handling (queue bounded; server blocks on full queue)
 
-**Dependencies**: `StreamParser`, `BlockingQueue<Telemetry>`, POSIX socket APIs
+**Dependencies**: `BlockingQueue<std::vector<uint8_t>>`, POSIX socket APIs
 
 #### SignalHandler
 
 **Type**: `class`
-**Location**: `src/infrastructure/signal_handler.hpp`
+**Location**: `server/include/signal_handler.hpp`
 **Purpose**: Install POSIX signal handler for graceful shutdown on SIGINT, SIGTERM
 
 **Constructor**:
@@ -415,7 +416,7 @@ void install() noexcept
 #### InMemoryDroneRepository
 
 **Type**: `class`
-**Location**: `src/infrastructure/in_memory_drone_repository.hpp`
+**Location**: `server/include/in_memory_drone_repository.hpp`
 **Purpose**: Implements IDroneRepository with in-memory `std::unordered_map<string, Drone>`
 
 **Constructor**:
@@ -427,24 +428,24 @@ InMemoryDroneRepository()
 
 | Method | Signature | Behavior |
 |--------|-----------|----------|
-| `findById()` | `std::optional<Drone> findById(const std::string& drone_id) override` | If key exists in map, return copy. Otherwise return `std::nullopt`. Thread-safe via mutex. |
-| `save()` | `void save(const Drone& drone) override` | Insert or update map entry. Thread-safe via mutex. |
+| `findById()` | `std::optional<Drone> findById(const std::string& drone_id) override` | If key exists in map, return copy. Otherwise return `std::nullopt`. |
+| `save()` | `void save(const Drone& drone) override` | Insert or update map entry. |
 
 **Internal State**:
 - `std::unordered_map<std::string, Drone> drones`
-- `mutable std::mutex lock` — protects map from concurrent access
+
+**Thread Safety**: No mutex needed -- accessed only from Stage 3 thread (single-consumer pipeline guarantee).
 
 **Responsibility**:
 - Implements domain port interface
-- Provides transactional semantics (atomic read/write per call)
 - No persistence (data lost on shutdown)
 
-**Dependencies**: `IDroneRepository`, `Drone`, `<unordered_map>`, `<mutex>`
+**Dependencies**: `IDroneRepository`, `Drone`, `<unordered_map>`
 
 #### ConsoleAlertNotifier
 
 **Type**: `class`
-**Location**: `src/infrastructure/console_alert_notifier.hpp`
+**Location**: `server/include/console_alert_notifier.hpp`
 **Purpose**: Implements IAlertNotifier by printing alerts to stdout
 
 **Constructor**:
@@ -471,7 +472,7 @@ ConsoleAlertNotifier()
 
 ---
 
-### 4. Common Boundary (src/common/)
+### 4. Common Boundary (common/)
 
 **Purpose**: Concurrency primitives and utilities shared across all boundaries.
 
@@ -483,7 +484,7 @@ ConsoleAlertNotifier()
 #### BlockingQueue<T> (Template Class)
 
 **Type**: `template <typename T>`
-**Location**: `src/common/blocking_queue.hpp`
+**Location**: `common/include/blocking_queue.hpp`
 **Purpose**: Thread-safe, bounded queue for passing data between pipeline stages
 
 **Constructor**:
@@ -498,10 +499,9 @@ BlockingQueue(size_t max_capacity)
 
 | Method | Signature | Behavior |
 |--------|-----------|----------|
-| `push()` | `void push(T value)` | Enqueue element. Block if queue full. Throw if queue closed. |
+| `push()` | `void push(T&& value)` | Enqueue element via move. Block if full. No-op if closed. |
 | `pop()` | `std::optional<T> pop()` | Dequeue element. Block if empty. Return `std::nullopt` if queue closed and empty. |
 | `close()` | `void close()` | Mark queue as closed. Existing elements remain available. New push fails. |
-| `size()` | `size_t size() const` | Return current number of enqueued elements. |
 
 **Internal State**:
 - `std::deque<T> buffer` — FIFO queue
@@ -516,17 +516,16 @@ BlockingQueue(size_t max_capacity)
 - Graceful shutdown signal via `close()` → `pop()` returns nullopt
 
 **Type Requirements**:
-- `T` must be move-constructible (efficient transfer via `std::move`)
-- `T` must be copyable (size check, optional return)
+- `T` must be move-constructible
 
 **Dependencies**: `<deque>`, `<mutex>`, `<condition_variable>`, `<optional>`
 
 ---
 
-## Composition Root (src/main.cpp)
+## Composition Root (server/src/main.cpp)
 
 **Type**: Application entry point
-**Location**: `src/main.cpp`
+**Location**: `server/src/main.cpp`
 **Purpose**: Create all objects, inject dependencies, instantiate pipeline, and manage graceful shutdown
 
 **Execution Flow**:
@@ -573,10 +572,10 @@ BlockingQueue(size_t max_capacity)
 
 ---
 
-## Client Binary (src/client/main.cpp)
+## Client Binary (client/src/main.cpp)
 
 **Type**: Separate test utility
-**Location**: `src/client/main.cpp`
+**Location**: `client/src/main.cpp`
 **Purpose**: Connect to server and send test telemetry packets for integration testing
 
 **Execution Flow**:
@@ -628,6 +627,7 @@ Common
 |------------|-------|---------|
 | `C++20 Standard Library` | All | `<string>`, `<vector>`, `<unordered_map>`, `<mutex>`, `<condition_variable>`, `<optional>`, `<span>`, `<functional>` |
 | `POSIX APIs` | Infrastructure | `<unistd.h>`, `<sys/socket.h>`, `<netinet/in.h>`, `<signal.h>` |
+| `spdlog` | All (via CMake FetchContent, compiled mode) | Structured logging (packet counts, CRC failures, connection events, shutdown) |
 | `GTest + GMock` | Unit tests (via FetchContent) | Mock repository, notifier; fake callbacks |
 | `CMake` | Build | Project configuration, target definitions |
 | `GCC 15.2.1` | Compilation | C++20 support, optimization |
@@ -756,24 +756,24 @@ graph LR
 
 ```mermaid
 stateDiagram-v2
-    [*] --> WAITING_HEADER
+    [*] --> HUNT_HEADER
 
-    WAITING_HEADER --> READING_LENGTH: found 0xAA55
-    WAITING_HEADER --> WAITING_HEADER: scan for header
+    HUNT_HEADER --> READ_LENGTH: found 0xAA55
+    HUNT_HEADER --> HUNT_HEADER: scan for header
 
-    READING_LENGTH --> READING_PAYLOAD: got 2 bytes
-    READING_LENGTH --> WAITING_HEADER: error
+    READ_LENGTH --> READ_PAYLOAD: got 2 bytes
+    READ_LENGTH --> HUNT_HEADER: error
 
-    READING_PAYLOAD --> READING_CRC: collected N bytes
-    READING_PAYLOAD --> WAITING_HEADER: error
+    READ_PAYLOAD --> READ_CRC: collected N bytes
+    READ_PAYLOAD --> HUNT_HEADER: error
 
-    READING_CRC --> VALIDATE: got 2 bytes
+    READ_CRC --> VALIDATE: got 2 bytes
 
     VALIDATE --> CALLBACK: CRC match
     VALIDATE --> RESYNC: CRC mismatch
 
-    CALLBACK --> WAITING_HEADER: invoke callback + reset
-    RESYNC --> WAITING_HEADER: resume after last header
+    CALLBACK --> HUNT_HEADER: invoke callback + reset
+    RESYNC --> HUNT_HEADER: resume after last header
 ```
 
 ---
@@ -835,7 +835,7 @@ main(): calls thread.join() on all three threads
 | `Drone::updateFrom()` | No | `noexcept` (pure arithmetic) |
 | `StreamParser::feed()` | No | `noexcept` (state machine always progresses; resync on corruption) |
 | `crc16()` | No | `noexcept` (pure computation) |
-| `PacketSerializer::serialize()` | No | `noexcept` (allocation safe for bounded size) |
+| `PacketSerializer::serialize()` | No | Deterministic but allocates; not marked `noexcept` |
 | `IDroneRepository::findById()` | No | Returns `std::optional<Drone>` (absence is normal, not error) |
 | `IDroneRepository::save()` | Yes | `throws` (storage failure is exceptional) |
 | `IAlertNotifier::notify()` | Yes | `throws` (transmission failure is exceptional) |
@@ -929,8 +929,8 @@ Client binary sends known test packets; server outputs to console; test harness 
 ## File Structure (Planned Directory Layout)
 
 ```
-src/
-├── domain/
+domain/
+├── include/
 │   ├── telemetry.hpp
 │   ├── alert_type.hpp
 │   ├── alert_transition.hpp
@@ -939,31 +939,55 @@ src/
 │   ├── i_drone_repository.hpp
 │   ├── i_alert_notifier.hpp
 │   └── process_telemetry.hpp
-│
-├── protocol/
+└── src/
+    ├── drone.cpp
+    └── process_telemetry.cpp
+
+protocol/
+├── include/
 │   ├── crc16.hpp
 │   ├── packet_serializer.hpp
 │   └── stream_parser.hpp
-│
-├── infrastructure/
+└── src/
+    ├── crc16.cpp
+    ├── packet_serializer.cpp
+    └── stream_parser.cpp
+
+server/
+├── include/
 │   ├── tcp_server.hpp
 │   ├── signal_handler.hpp
 │   ├── in_memory_drone_repository.hpp
 │   └── console_alert_notifier.hpp
-│
-├── common/
-│   └── blocking_queue.hpp
-│
-├── main.cpp (server entry point)
-└── client.cpp (client entry point)
+└── src/
+    ├── tcp_server.cpp
+    ├── signal_handler.cpp
+    ├── in_memory_drone_repository.cpp
+    ├── console_alert_notifier.cpp
+    └── main.cpp (server entry point)
+
+client/
+├── include/
+└── src/
+    └── main.cpp (client entry point)
+
+common/
+└── include/
+    └── blocking_queue.hpp
 
 tests/
-├── domain_tests.cpp
-├── protocol_tests.cpp
-└── integration_tests.cpp
+├── domain/
+│   ├── drone_test.cpp
+│   ├── process_telemetry_test.cpp
+│   └── fakes/
+│       ├── fake_drone_repository.hpp
+│       └── fake_alert_notifier.hpp
+└── protocol/
+    ├── crc16_test.cpp
+    ├── packet_serializer_test.cpp
+    └── stream_parser_test.cpp
 
 CMakeLists.txt
-README.md
 ```
 
 ---
@@ -989,22 +1013,22 @@ README.md
 
 | Element | Type | Location | Purpose | Dependencies |
 |---------|------|----------|---------|--------------|
-| **Telemetry** | struct | domain/telemetry.hpp | Immutable data snapshot | none |
-| **AlertType** | enum | domain/alert_type.hpp | Alert classification | none |
-| **AlertTransition** | struct | domain/alert_transition.hpp | State change signal | AlertType |
-| **AlertPolicy** | struct | domain/alert_policy.hpp | Threshold configuration | none |
-| **Drone** | class | domain/drone.hpp | Entity with state + behavior | Telemetry, AlertType, AlertPolicy |
-| **ProcessTelemetry** | class | domain/process_telemetry.hpp | Use case orchestrator | IDroneRepository, IAlertNotifier, Drone |
-| **IDroneRepository** | interface | domain/i_drone_repository.hpp | Persistence port | Drone |
-| **IAlertNotifier** | interface | domain/i_alert_notifier.hpp | Notification port | AlertTransition |
-| **crc16()** | function | protocol/crc16.hpp | Checksum computation | none |
-| **PacketSerializer** | class | protocol/packet_serializer.hpp | Telemetry → bytes | Telemetry, crc16() |
-| **StreamParser** | class | protocol/stream_parser.hpp | State machine parser | Telemetry, crc16() |
-| **TcpServer** | class | infrastructure/tcp_server.hpp | TCP socket listener | StreamParser, BlockingQueue |
-| **SignalHandler** | class | infrastructure/signal_handler.hpp | Graceful shutdown | std::atomic |
-| **InMemoryDroneRepository** | class | infrastructure/in_memory_drone_repository.hpp | Memory-based persistence | IDroneRepository |
-| **ConsoleAlertNotifier** | class | infrastructure/console_alert_notifier.hpp | Stdout alerting | IAlertNotifier |
-| **BlockingQueue<T>** | template | common/blocking_queue.hpp | Thread-safe queue | std::mutex, std::condition_variable |
+| **Telemetry** | struct | domain/include/telemetry.hpp | Immutable data snapshot | none |
+| **AlertType** | enum | domain/include/alert_type.hpp | Alert classification | none |
+| **AlertTransition** | struct | domain/include/alert_transition.hpp | State change signal | AlertType |
+| **AlertPolicy** | struct | domain/include/alert_policy.hpp | Threshold configuration | none |
+| **Drone** | class | domain/include/drone.hpp | Entity with state + behavior | Telemetry, AlertType, AlertPolicy |
+| **ProcessTelemetry** | class | domain/include/process_telemetry.hpp | Use case orchestrator | IDroneRepository, IAlertNotifier, Drone |
+| **IDroneRepository** | interface | domain/include/i_drone_repository.hpp | Persistence port | Drone |
+| **IAlertNotifier** | interface | domain/include/i_alert_notifier.hpp | Notification port | AlertTransition |
+| **crc16()** | function | protocol/include/crc16.hpp | Checksum computation | none |
+| **PacketSerializer** | class | protocol/include/packet_serializer.hpp | Telemetry -> bytes | Telemetry, crc16() |
+| **StreamParser** | class | protocol/include/stream_parser.hpp | State machine parser | Telemetry, crc16() |
+| **TcpServer** | class | server/include/tcp_server.hpp | TCP socket listener | BlockingQueue |
+| **SignalHandler** | class | server/include/signal_handler.hpp | Graceful shutdown | std::atomic |
+| **InMemoryDroneRepository** | class | server/include/in_memory_drone_repository.hpp | Memory-based persistence | IDroneRepository |
+| **ConsoleAlertNotifier** | class | server/include/console_alert_notifier.hpp | Stdout alerting | IAlertNotifier |
+| **BlockingQueue<T>** | template | common/include/blocking_queue.hpp | Thread-safe queue | std::mutex, std::condition_variable |
 
 ---
 

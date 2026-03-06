@@ -309,6 +309,20 @@ Validates the 1,000 packets/second performance requirement.
 - **Purpose:** Enables TDD for the Domain and Protocol boundaries without
   requiring production infrastructure to be running.
 
+### spdlog (Logging Library — Build-Time Dependency)
+
+- **Type:** External Library (compiled mode, fetched via CMake FetchContent)
+- **Description:** spdlog is a fast, header-only/compiled C++ logging library
+  used for structured, leveled logging across all boundaries — infrastructure
+  logs TCP events, protocol logs CRC failures and resync, domain logs alert
+  transitions, composition root logs startup/shutdown summaries. Compiled mode
+  (not header-only) is used for faster incremental builds across multiple
+  translation units.
+- **Integration Type:** CMake FetchContent (downloaded at configure time,
+  compiled as a static library). All targets link `spdlog::spdlog`.
+- **Purpose:** Provides thread-safe, leveled, structured logging throughout the
+  pipeline without custom logging code.
+
 ### CMake Build System
 
 - **Type:** Build Tool / External Dependency
@@ -346,6 +360,7 @@ C4Context
     System_Ext(drone_unit, "Drone Unit / RF Gateway", "Physical or simulated embedded sensor that continuously transmits binary telemetry packets over TCP")
     System_Ext(os_signals, "OS Signal Subsystem", "Linux POSIX signals (SIGINT / SIGTERM) that trigger graceful shutdown cascade")
     System_Ext(cmake_gtest, "CMake + GTest / GMock", "Build system and test framework (FetchContent). Compile-time and test-time dependency only.")
+    System_Ext(spdlog, "spdlog", "Structured logging library (FetchContent, compiled mode). Linked by all targets for thread-safe, leveled logging.")
 
     Rel(drone_unit, dsp, "Streams binary telemetry", "TCP / binary packet protocol [0xAA55][LEN][PAYLOAD][CRC16]")
     Rel(client_bin, dsp, "Injects test telemetry streams", "TCP / binary packet protocol")
@@ -354,6 +369,7 @@ C4Context
     Rel(os_signals, dsp, "Delivers SIGINT / SIGTERM")
     Rel(dsp, os_signals, "Installs signal handler, reads stop flag")
     Rel(cmake_gtest, dsp, "Compiles and tests (build-time)")
+    Rel(spdlog, dsp, "Provides structured logging (build-time, linked at runtime)")
 ```
 
 ---
@@ -414,7 +430,7 @@ streams.
 | Throughput target | >= 1,000 packets/second |
 | Platform | Linux (Ubuntu preferred), C++20, GCC |
 | Memory model | No external storage; in-process in-memory state only |
-| External runtime dependencies | None (POSIX + C++ stdlib only) |
+| External runtime dependencies | spdlog (compiled mode, fetched via FetchContent) + POSIX + C++ stdlib |
 | Persistence | None — drone state is ephemeral, lost on process exit |
 | Authentication | None — any TCP client may connect |
 | Maximum connections | Single client per server instance (spec does not require multi-client) |

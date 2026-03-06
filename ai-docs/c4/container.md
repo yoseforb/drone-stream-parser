@@ -99,7 +99,7 @@ TCP socket
 │    - Creates pipeline stage objects (injected via ref)    │
 │    - Creates AlertPolicy (constexpr defaults)             │
 │    - Creates InMemoryDroneRepository                       │
-│    - Creates StdoutAlertNotifier                          │
+│    - Creates ConsoleAlertNotifier                         │
 │    - Starts threads, joins on shutdown                    │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -135,15 +135,16 @@ Telemetry payload fields (serialized inside PAYLOAD):
 
 | Field | C++ type | Notes |
 |-------|----------|-------|
-| `drone_id` | `std::string` | Length-prefixed string |
-| `latitude` | `double` | 8 bytes, IEEE 754 |
-| `longitude` | `double` | 8 bytes, IEEE 754 |
-| `altitude` | `double` | 8 bytes, IEEE 754 |
-| `speed` | `double` | 8 bytes, IEEE 754 |
-| `timestamp` | `uint64_t` | 8 bytes, Unix epoch ms |
+| `drone_id` | `std::string` | uint16_t little-endian byte count prefix, followed by UTF-8 bytes, no null terminator |
+| `latitude` | `double` | 8 bytes, IEEE 754, little-endian |
+| `longitude` | `double` | 8 bytes, IEEE 754, little-endian |
+| `altitude` | `double` | 8 bytes, IEEE 754, little-endian |
+| `speed` | `double` | 8 bytes, IEEE 754, little-endian |
+| `timestamp` | `uint64_t` | 8 bytes, Unix epoch ms, little-endian |
 
-Note: byte order and string encoding are open questions (see architecture.md §6).
-These are Protocol boundary decisions, not container-level decisions.
+All multi-byte fields are little-endian (matches x86-64 target). CRC variant is
+CRC-16/CCITT (polynomial 0x1021, init 0x0000), table-driven implementation.
+See ADR-008 for full wire format rationale.
 
 ##### stdout / stderr Interface
 
@@ -174,8 +175,9 @@ and no external API dependencies.
 - **Compiler**: GCC 15.2.1, `-std=c++20`
 - **OS**: Linux (Ubuntu preferred per spec)
 - **Runtime dependencies**: POSIX sockets, `<thread>`, `<atomic>`, `<mutex>`,
-  `<condition_variable>` — all from C++ stdlib and Linux kernel ABI. No third-party
-  runtime libraries.
+  `<condition_variable>` — from C++ stdlib and Linux kernel ABI.
+  **spdlog** (via CMake FetchContent, compiled mode) — structured leveled logging
+  across all boundaries (see ADR-012).
 - **Test dependencies**: GTest + GMock (via CMake FetchContent, build-time only)
 - **Scaling**: Single process, single client connection. Vertical only. The bounded
   queues provide back-pressure; the pipeline is designed for at least 1000
@@ -248,7 +250,8 @@ None.
 - **Build system**: CMake 4.2.3, target `drone_client`
 - **Compiler**: GCC 15.2.1, `-std=c++20`
 - **OS**: Linux
-- **Runtime dependencies**: POSIX sockets, C++ stdlib. No third-party runtime.
+- **Runtime dependencies**: POSIX sockets, C++ stdlib. **spdlog** (via CMake
+  FetchContent, compiled mode) — structured leveled logging (see ADR-012).
 - **Scaling**: Single instance, single connection. Designed to sustain 1000+
   packets/second for performance validation.
 - **Lifetime**: Short-lived. Runs a test scenario and exits. Not a daemon.
@@ -351,17 +354,19 @@ before the stop signal is processed to completion.
 
 ---
 
-## Open Questions (Inherited from Architecture)
+## Resolved Design Decisions
 
-These decisions affect container interface details but are not yet resolved:
+These decisions were resolved in ADR-008 and are reflected in the wire format above:
 
-- **Port number**: 9000 is used as a working assumption. Not yet finalized.
-- **Byte order**: Wire format byte order (little-endian vs big-endian) for
-  multi-byte fields is not yet decided. This is a Protocol boundary decision that
-  affects the binary interface between the two containers.
-- **String encoding**: How `drone_id` is length-prefixed in the wire format.
-- **Client scenarios**: Exact test scenarios the client binary will exercise.
+- **Byte order**: All multi-byte fields are little-endian (matches x86-64 target).
+- **String encoding**: `drone_id` uses a uint16_t little-endian byte count prefix
+  followed by UTF-8 bytes, no null terminator.
+- **CRC variant**: CRC-16/CCITT (polynomial 0x1021, init 0x0000, table-driven).
+- **Client scenarios**: 7 named scenarios — normal, fragmented, corrupt, stress,
+  alert, multi-drone, interleaved.
 - **Multi-client support**: Not in scope, but the architecture does not preclude
   it (the pipeline is independent of the accept loop).
 
-See `ai-docs/architecture.md` §6 for the full open questions list.
+## Open Questions
+
+- **Port number**: 9000 is used as a working assumption. Not yet finalized.
