@@ -14,7 +14,7 @@ The project follows TDD with Interface-Driven Design (IDD). Needed to choose bet
 
 **Test strategy by boundary:**
 - **Domain:** Pure unit tests using hand-written fakes (FakeDroneRepository, FakeAlertNotifier). Fakes are preferred over mocks for internal interfaces because they are simpler, more readable, and test behavior rather than interaction.
-- **Protocol:** Unit tests feeding raw byte arrays directly to the parser and serializer. No mocks needed — input is bytes, output is Telemetry or bytes.
+- **Protocol:** Unit tests feeding raw byte arrays directly to the parser and serializer. No mocks needed — input is bytes, output is Telemetry or bytes. Must include explicit test for MAX_PAYLOAD (4096) guard — feed a packet with LENGTH > 4096 and verify the parser resyncs without crashing or unbounded allocation.
 - **Infrastructure:** Integration tested via a separate client binary (`drone_client`). No unit tests for TcpServer, SignalHandler, or thread wiring. Mocking sockets and threads adds complexity without catching real bugs (the bugs live in actual OS interaction).
 
 **Client binary:** Separate executable, independent of the server architecture. It is a test tool, not part of the system under test. It connects via TCP and exercises the full stack.

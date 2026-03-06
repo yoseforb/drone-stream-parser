@@ -26,6 +26,8 @@ HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> HUNT_HEADER
 
 **MAX_PAYLOAD guard (4096):** Prevents a malformed length field from causing unbounded memory allocation.
 
+**Internal accumulation buffer:** The StreamParser maintains an internal `std::vector<uint8_t>` accumulation buffer. When `feed()` is called, incoming bytes are appended to this buffer. The state machine operates on the buffer contents, tracking a read cursor. On successful packet parse, consumed bytes are erased from the front of the buffer. On resync (CRC failure or invalid length), the read cursor rewinds within this buffer to one byte after the `0xAA` that started the failed attempt, and parsing resumes from there. This buffer is essential — without it, rewind-based resync would be impossible since raw bytes from previous `feed()` calls would already be gone.
+
 **Parser stats:** The parser tracks `crc_fail_count` and `malformed_count` internally via getter methods. These are logged by the composition root at shutdown. Stats are not a domain concern — they are protocol-level diagnostics.
 
 ## Alternatives Considered

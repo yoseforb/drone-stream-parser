@@ -139,6 +139,7 @@ Three complementary tools, each for its purpose:
 | `AlertPolicy` comparisons | No — arithmetic | `noexcept` |
 | `StreamParser::feed()` | No — pure parsing | `noexcept` |
 | `crc16()` | No — pure computation | `noexcept` |
+| `PacketSerializer::serialize()` | Yes — allocates | may throw (`std::bad_alloc`) |
 | `IDroneRepository::save()` | Yes — I/O boundary | throws |
 | `IAlertNotifier::notify()` | Yes — I/O boundary | throws |
 | `ProcessTelemetry::execute()` | Yes — calls ports | propagates |
@@ -321,6 +322,7 @@ drone-stream-parser/
 │   └── src/
 │       ├── main.cpp                  # Composition root
 │       ├── tcp_server.cpp
+│       ├── signal_handler.cpp
 │       ├── in_memory_drone_repo.cpp
 │       └── console_alert_notifier.cpp
 ├── client/

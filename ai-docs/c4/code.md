@@ -51,6 +51,7 @@ Domain  Protocol    Infrastructure           Common
   - `timestamp: uint64_t` — Unix timestamp (milliseconds)
 - **Responsibility**: Value container, no behavior
 - **Dependencies**: None
+- **Immutability**: Immutable by design convention, not language enforcement. Fields are public (making them `const` would break move semantics needed for pipeline efficiency). Each Telemetry is constructed once, moved through queues, and never modified after construction.
 
 **AlertType**
 - **Type**: `enum`
@@ -259,7 +260,7 @@ std::vector<uint8_t> serialize(const Telemetry& tel)
 
 **Dependencies**: `Telemetry`, `crc16()` function
 
-**Design Notes**: Serialization is deterministic but allocates (`std::vector`), so not marked `noexcept`
+**Design Notes**: Serialization is deterministic but allocates (`std::vector`). May throw `std::bad_alloc` on allocation failure, so not marked `noexcept`.
 
 #### StreamParser (State Machine)
 
@@ -333,6 +334,14 @@ void feed(std::span<const uint8_t> chunk) noexcept
 - Callback-based (not returning packets) fits streaming nature
 - Resync strategy: rewind to byte after last `0xAA55`, search again. Prevents infinite loop on persistent corruption.
 - Maintains internal buffer for partial state across `feed()` calls
+
+**Internal Accumulation Buffer:**
+- StreamParser maintains an internal `std::vector<uint8_t>` accumulation buffer.
+- When `feed()` is called, incoming bytes are appended to this buffer.
+- The state machine operates on the buffer contents via a read cursor position.
+- On successful packet parse: consumed bytes are erased from the front of the buffer.
+- On resync (CRC mismatch or invalid length): the read cursor rewinds within this buffer to one byte after the `0xAA` that started the failed attempt. Parsing resumes from there.
+- This buffer is essential for the rewind-based resync strategy — without it, bytes from previous `feed()` calls would be gone and resync would be impossible.
 
 ---
 
@@ -916,6 +925,24 @@ TEST(StreamParserTest, ResyncOnCrcFailure) {
 
     parser.feed(stream);
     EXPECT_EQ(results.size(), 2); // two valid packets, corrupt skipped
+}
+
+TEST(StreamParserTest, RejectsOversizedPayloadLength) {
+    std::vector<Telemetry> results;
+    StreamParser parser([&](Telemetry tel) { results.push_back(tel); });
+
+    // Packet with LENGTH = 5000 (exceeds MAX_PAYLOAD = 4096)
+    std::vector<uint8_t> oversized = {0xAA, 0x55, 0x88, 0x13}; // 0x1388 = 5000 LE
+    // ... followed by a valid packet
+    std::vector<uint8_t> valid_packet = /* serialize valid packet */;
+
+    std::vector<uint8_t> stream;
+    stream.insert(stream.end(), oversized.begin(), oversized.end());
+    stream.insert(stream.end(), valid_packet.begin(), valid_packet.end());
+
+    parser.feed(stream);
+    EXPECT_EQ(results.size(), 1); // only the valid packet parsed
+    EXPECT_GE(parser.malformed_count(), 1); // oversized rejected
 }
 ```
 

@@ -12,7 +12,7 @@ The project needs structured, leveled logging across all boundaries — infrastr
 
 Use **spdlog** via FetchContent (compiled mode, not header-only).
 
-- **Placement:** Common utility, available to all boundaries. Same treatment as BlockingQueue — a tool, not a domain concept.
+- **Placement:** External build dependency (FetchContent), available to all boundaries. Unlike BlockingQueue (which is project-owned code in the Common utility area), spdlog is a third-party library linked via CMake. It is not part of any architectural boundary — it is a build-time dependency comparable to GTest, made available to all targets via `spdlog::spdlog` link.
 - **Integration:** FetchContent in root CMakeLists.txt. All targets link `spdlog::spdlog`.
 - **Mode:** Compiled library (not header-only) for faster incremental builds across multiple translation units.
 

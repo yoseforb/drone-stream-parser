@@ -293,6 +293,8 @@ available to the server if it ever needs to send packets back.
 serialize(const Telemetry& t) -> std::vector<uint8_t>
 ```
 
+**Error Contract:** May throw `std::bad_alloc` on allocation failure. Not marked `noexcept`.
+
 **Dependencies:** Telemetry (Domain), CRC16 (Protocol).
 
 ---
@@ -497,7 +499,7 @@ notify(const std::string& drone_id,
 
 ### 1.4 Common Utility
 
-No boundary affiliation. Available to all three boundaries. Header-only.
+No boundary affiliation. Available to all three boundaries.
 
 ---
 
@@ -574,7 +576,7 @@ all boundaries as a common utility, same treatment as BlockingQueue.
 - Fetched via FetchContent in root `CMakeLists.txt`.
 - All targets link `spdlog::spdlog`.
 
-**Dependencies:** None (third-party library, self-contained).
+**Dependencies:** None (third-party library, self-contained). Note: unlike BlockingQueue (project-owned code), spdlog is an external build dependency fetched via FetchContent. It is listed here as a common utility for completeness, but architecturally it is a third-party dependency, not a project component.
 
 ---
 
