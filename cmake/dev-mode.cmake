@@ -3,9 +3,9 @@ include(cmake/folders.cmake)
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)
-  # Make tests depend on auto-formatting
+  # Make tests depend on auto-format and auto-tidy-fix
   if(TARGET tests)
-    add_dependencies(tests auto-format-sources)
+    add_dependencies(tests auto-tidy-fix)
   endif()
 endif()
 
