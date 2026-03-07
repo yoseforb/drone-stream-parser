@@ -368,7 +368,7 @@ void feed(std::span<const uint8_t> chunk) noexcept
 
 **Type**: `class`
 **Location**: `server/include/tcp_server.hpp`
-**Purpose**: TCP listener that accepts connections and pushes raw received bytes to Q1. Does NOT parse -- parsing is a separate stage (Thread 2).
+**Purpose**: TCP listener that accepts connections sequentially (one at a time) and pushes raw received bytes to Q1. After a client disconnects, returns to accept() to await the next connection. Only exits when stop_flag is set. Does NOT parse — parsing is a separate stage (Thread 2).
 
 **Constructor**:
 ```cpp
@@ -388,19 +388,28 @@ TcpServer(
 
 | Method | Signature | Behavior |
 |--------|-----------|----------|
-| `run()` | `void run()` | Main event loop: accept connection, recv bytes in loop, push to Q1. Blocks until `stop_flag` set or I/O error. |
+| `run()` | `void run()` | Two-loop event loop: outer loop accepts connections sequentially, inner loop receives bytes and pushes to Q1. Client disconnect returns to accept(). Exits only when `stop_flag` is set. Uses `poll()` with timeout for responsive shutdown. |
 
 **Execution Flow**:
-1. Create and bind socket to configurable bind address and port
-2. Listen for incoming connections
-3. On connection: recv bytes in chunks (e.g., 4KB at a time)
-4. On data: call `output_queue.push(std::move(chunk))`
-5. On recv error or `stop_flag` set: close socket, call `output_queue.close()`, exit
+1. Create, bind, and listen on configured address and port
+2. **Outer loop** (exits only when `stop_flag` is set):
+   a. `poll()` on listening socket with timeout (e.g., 200ms) — enables responsive stop_flag checking
+   b. On `POLLIN`: `accept()` incoming connection
+   c. **Inner loop** (exits on client disconnect or `stop_flag`):
+      - `poll()` on client socket with timeout (e.g., 200ms)
+      - On `POLLIN`: `recv()` bytes in chunks (e.g., 4KB)
+      - On data: call `output_queue.push(std::move(chunk))`
+      - On `recv()` returning 0 (EOF): client disconnected — break inner loop
+      - On `recv()` error: log, break inner loop
+   d. Close client socket
+   e. Continue outer loop (return to accept)
+3. After outer loop exits: close listening socket, call `output_queue.close()`
 
 **Responsibility**:
-- POSIX TCP socket setup and acceptance
-- Non-blocking or event-driven recv loop
+- POSIX TCP socket setup and sequential connection acceptance
+- `poll()`-based event loop for both accept and recv (responsive to stop_flag)
 - Backpressure handling (queue bounded; server blocks on full queue)
+- Client disconnect recovery (return to accept, no pipeline shutdown)
 
 **Dependencies**: `BlockingQueue<std::vector<uint8_t>>`, POSIX socket APIs
 

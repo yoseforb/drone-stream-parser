@@ -349,11 +349,16 @@ the parser stage.
 **Software Features**
 
 - Listens on a configured TCP port (value set at composition root).
-- Accepts one client connection (current scope — multi-client is a production
-  extension).
-- Calls `recv()` in a loop; pushes `vector<uint8_t>` chunks into Q1.
-- Watches the `stop_flag` (atomic bool); closes socket and calls `Q1.close()` on
-  shutdown signal to cascade graceful termination.
+- Accepts connections sequentially (one at a time). After a client disconnects,
+  returns to `accept()` to await the next connection. Concurrent multi-client is
+  a production extension.
+- Uses `poll()` with timeout on both listening and client sockets for responsive
+  `stop_flag` checking.
+- Calls `recv()` in an inner loop; pushes `vector<uint8_t>` chunks into Q1.
+- On client disconnect (recv returns 0): closes client socket, returns to accept
+  loop. Does NOT close Q1 — the pipeline remains running.
+- On `stop_flag` set: closes listening socket, calls `Q1.close()` to cascade
+  graceful termination. Only exit path.
 
 **Interface (constructor injection)**
 
@@ -362,7 +367,7 @@ TcpServer(uint16_t port,
           BlockingQueue<std::vector<uint8_t>>& q1,
           std::atomic<bool>& stop_flag)
 
-run() -> void    // blocks; called from recv thread
+run() -> void    // blocks; two-loop: outer accept, inner recv. Called from recv thread.
 ```
 
 **Dependencies:** BlockingQueue (Common), stop_flag (atomic bool, set by

@@ -187,11 +187,15 @@ TCP socket → [recv bytes] → Q1 → [parse bytes→Telemetry] → Q2 → [pro
 
 ```
 Signal (SIGINT/SIGTERM) → atomic<bool> stop_flag
-  → Recv stage: sees flag, closes socket, calls Q1.close()
+  → Recv stage: sees flag, closes listening socket, calls Q1.close()
   → Parse stage: Q1.pop() returns nullopt, calls Q2.close()
   → Process stage: Q2.pop() returns nullopt, exits
   → main() joins threads in pipeline order
 ```
+
+**Client disconnect ≠ shutdown.** When a client disconnects, the recv stage closes
+the client socket and returns to `accept()`. Q1 is NOT closed — the pipeline remains
+running, ready for the next connection.
 
 No data silently dropped — each stage drains its input before closing its output.
 
@@ -391,3 +395,4 @@ drone-stream-parser/
 | 28 | Client scenarios | 7 scenarios | normal, fragmented, corrupt, stress, alert, multi-drone, interleaved |
 | 29 | Integration verification | Structured stdout + shutdown summary | No query API. Unit tests prove correctness; client demos + console output for examiner |
 | 30 | Logging | spdlog via FetchContent (compiled) | De facto C++ standard. Leveled, structured, fast. Common utility available to all boundaries. |
+| 31 | TcpServer accept model | Sequential accept loop (one connection at a time) | After client disconnect, return to accept(). Server only exits on stop_flag. Examiner can restart client without restarting server. poll() with timeout for responsive shutdown. |

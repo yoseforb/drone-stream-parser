@@ -114,7 +114,7 @@ TCP socket
 - **Transport semantics**: Continuous byte stream — NOT a datagram protocol. The
   server treats the stream as an infinite sequence of bytes and relies on the
   state-machine parser (Protocol boundary) to find packet boundaries.
-- **Accepts**: One client connection. Multi-client support is not in scope.
+- **Accepts**: Connections sequentially (one at a time). After a client disconnects, returns to `accept()` to await the next connection. Only exits when `stop_flag` is set. Concurrent multi-client support is not in scope.
 
 ##### Binary Packet Wire Format (Inbound)
 
@@ -335,7 +335,7 @@ Operator sends SIGINT/SIGTERM
     ▼
 Server Binary: stop_flag.store(true)  [atomic<bool>]
     │
-    ├─ Thread 1 (Recv):    sees flag → closes TCP socket → Q1.close()
+    ├─ Thread 1 (Recv):    sees flag → closes listening socket → Q1.close()
     │
     ├─ Thread 2 (Parse):   Q1.pop() returns nullopt → drains remaining Q1 items
     │                       → Q2.close()
@@ -352,6 +352,11 @@ Client Binary: independent process — exits when its send scenario completes,
 No data is silently dropped. Each stage drains its input queue before signaling
 downstream. The cascade ensures all in-flight telemetry that entered the pipeline
 before the stop signal is processed to completion.
+
+**Client disconnect ≠ shutdown.** When a client disconnects (recv returns EOF), the
+server closes the client socket and returns to `accept()` to await the next connection.
+Q1 is NOT closed on client disconnect — the pipeline remains running. Q1.close() is
+only called when stop_flag is set (SIGINT/SIGTERM).
 
 ---
 
