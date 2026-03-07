@@ -18,12 +18,28 @@ const std::set<AlertType>& Drone::getAlertState() const noexcept {
 
 std::vector<AlertTransition>
 Drone::updateFrom(const Telemetry& telemetry,
-                  const AlertPolicy& /*policy*/) noexcept {
-  // Stub: update state fields but return no transitions.
+                  const AlertPolicy& policy) noexcept {
   latitude_ = telemetry.latitude;
   longitude_ = telemetry.longitude;
   altitude_ = telemetry.altitude;
   speed_ = telemetry.speed;
   timestamp_ = telemetry.timestamp;
-  return {};
+
+  std::vector<AlertTransition> transitions;
+
+  auto evaluate = [&](AlertType type, bool triggered) {
+    bool const Active = alert_state_.contains(type);
+    if (triggered && !Active) {
+      alert_state_.insert(type);
+      transitions.push_back({type, true});
+    } else if (!triggered && Active) {
+      alert_state_.erase(type);
+      transitions.push_back({type, false});
+    }
+  };
+
+  evaluate(AlertType::ALTITUDE, telemetry.altitude > policy.altitude_limit);
+  evaluate(AlertType::SPEED, telemetry.speed > policy.speed_limit);
+
+  return transitions;
 }
