@@ -18,7 +18,7 @@ Protocol, Infrastructure) enforced at build time via CMake link dependencies.
 
 ---
 
-## Phase 1: Project Scaffolding
+## Phase 1: Project Scaffolding - Completed
 
 Goal: `cmake --build build` succeeds with empty targets.
 
