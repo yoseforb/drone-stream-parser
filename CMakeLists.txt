@@ -12,6 +12,25 @@ project(
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
+# ---- clang-tidy (prefer clang-tidy-cache, fall back to clang-tidy) ----
+
+option(ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
+if(ENABLE_CLANG_TIDY)
+  find_program(CLANG_TIDY_CACHE_EXE NAMES clang-tidy-cache)
+  find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+  if(CLANG_TIDY_CACHE_EXE)
+    set(CMAKE_CXX_CLANG_TIDY
+        "${CLANG_TIDY_CACHE_EXE};--header-filter=^${PROJECT_SOURCE_DIR}/")
+    message(STATUS "clang-tidy: using clang-tidy-cache (${CLANG_TIDY_CACHE_EXE})")
+  elseif(CLANG_TIDY_EXE)
+    set(CMAKE_CXX_CLANG_TIDY
+        "${CLANG_TIDY_EXE};--header-filter=^${PROJECT_SOURCE_DIR}/")
+    message(STATUS "clang-tidy: using clang-tidy (${CLANG_TIDY_EXE})")
+  else()
+    message(WARNING "ENABLE_CLANG_TIDY is ON but neither clang-tidy-cache nor clang-tidy found")
+  endif()
+endif()
+
 # ---- Dependencies ----
 
 find_package(Threads REQUIRED)
