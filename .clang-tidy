@@ -1,0 +1,225 @@
+---
+# Strict clang-tidy configuration for a C++20 project (GCC 15.2.1, Linux)
+# Brand new codebase — maximally strict from the start.
+#
+# Strategy: enable everything (*), then disable platform-specific, library-
+# specific, irrelevant, and known-noisy/conflicting checks.
+
+Checks: >
+  *,
+  -abseil-*,
+  -altera-*,
+  -android-*,
+  -darwin-*,
+  -fuchsia-*,
+  -linuxkernel-*,
+  -llvmlibc-*,
+  -objc-*,
+  -zircon-*,
+  -modernize-use-trailing-return-type,
+  -hicpp-avoid-c-arrays,
+  -hicpp-avoid-goto,
+  -hicpp-braces-around-statements,
+  -hicpp-deprecated-headers,
+  -hicpp-explicit-conversions,
+  -hicpp-function-size,
+  -hicpp-invalid-access-moved,
+  -hicpp-member-init,
+  -hicpp-move-const-arg,
+  -hicpp-multiway-paths-covered,
+  -hicpp-named-parameter,
+  -hicpp-new-delete-overloads,
+  -hicpp-no-array-decay,
+  -hicpp-no-malloc,
+  -hicpp-noexcept-move,
+  -hicpp-signed-bitwise,
+  -hicpp-special-member-functions,
+  -hicpp-static-assert,
+  -hicpp-uppercase-literal-suffix,
+  -hicpp-use-auto,
+  -hicpp-use-emplace,
+  -hicpp-use-equals-default,
+  -hicpp-use-equals-delete,
+  -hicpp-use-noexcept,
+  -hicpp-use-nullptr,
+  -hicpp-use-override,
+  -hicpp-vararg,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -cert-con36-c,
+  -cert-con54-cpp,
+  -cert-dcl03-c,
+  -cert-dcl16-c,
+  -cert-dcl54-cpp,
+  -cert-dcl59-cpp,
+  -cert-err09-cpp,
+  -cert-err61-cpp,
+  -cert-fio38-c,
+  -cert-msc24-c,
+  -cert-msc30-c,
+  -cert-msc32-c,
+  -cert-msc33-c,
+  -cert-msc54-cpp,
+  -cert-oop11-cpp,
+  -cert-oop54-cpp,
+  -cert-pos44-c,
+  -cert-pos47-c,
+  -cert-str34-c,
+  -cert-exp42-c,
+  -cert-flp37-c,
+  -cert-int09-c,
+  -cert-sig30-c,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-c-copy-assignment-signature,
+  -cppcoreguidelines-explicit-virtual-functions,
+  -cppcoreguidelines-macro-to-enum,
+  -cppcoreguidelines-noexcept-destructor,
+  -cppcoreguidelines-noexcept-move-operations,
+  -cppcoreguidelines-noexcept-swap,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-use-default-member-init,
+  -google-readability-braces-around-statements,
+  -google-readability-function-size,
+  -google-readability-namespace-comments,
+  -llvm-header-guard,
+  -llvm-include-order,
+  -misc-unused-alias-decls,
+
+# All enabled checks are treated as errors — strict enforcement.
+WarningsAsErrors: >
+  *,
+  -abseil-*,
+  -altera-*,
+  -android-*,
+  -darwin-*,
+  -fuchsia-*,
+  -linuxkernel-*,
+  -llvmlibc-*,
+  -objc-*,
+  -zircon-*
+
+# Match project headers (not system/third-party headers).
+HeaderFilterRegex: '.*'
+
+# Use clang-format for any fix-it formatting.
+FormatStyle: file
+
+CheckOptions:
+  # ---------- readability-identifier-naming ----------
+
+  # Classes / Structs: CamelCase
+  readability-identifier-naming.ClassCase:            CamelCase
+  readability-identifier-naming.StructCase:           CamelCase
+
+  # Functions / Methods: camelBack
+  readability-identifier-naming.FunctionCase:         camelBack
+  readability-identifier-naming.MethodCase:           camelBack
+
+  # Variables / Parameters: lower_case (snake_case)
+  readability-identifier-naming.VariableCase:         lower_case
+  readability-identifier-naming.ParameterCase:        lower_case
+  readability-identifier-naming.LocalVariableCase:    lower_case
+
+  # Member variables: lower_case with trailing underscore
+  readability-identifier-naming.MemberCase:           lower_case
+  readability-identifier-naming.MemberSuffix:         '_'
+  readability-identifier-naming.PrivateMemberCase:    lower_case
+  readability-identifier-naming.PrivateMemberSuffix:  '_'
+  readability-identifier-naming.ProtectedMemberCase:  lower_case
+  readability-identifier-naming.ProtectedMemberSuffix: '_'
+  readability-identifier-naming.PublicMemberCase:     lower_case
+
+  # Constants / Constexpr: CamelCase for constexpr
+  readability-identifier-naming.ConstexprVariableCase: CamelCase
+  readability-identifier-naming.GlobalConstantCase:    UPPER_CASE
+  readability-identifier-naming.StaticConstantCase:    CamelCase
+  readability-identifier-naming.ConstantCase:          CamelCase
+  readability-identifier-naming.ConstantMemberCase:    CamelCase
+
+  # Enums: CamelCase
+  readability-identifier-naming.EnumCase:              CamelCase
+
+  # Enum constants: UPPER_CASE
+  readability-identifier-naming.EnumConstantCase:      UPPER_CASE
+  readability-identifier-naming.ScopedEnumConstantCase: UPPER_CASE
+
+  # Namespaces: lower_case (snake_case)
+  readability-identifier-naming.NamespaceCase:         lower_case
+
+  # Template parameters: CamelCase
+  readability-identifier-naming.TemplateParameterCase: CamelCase
+  readability-identifier-naming.TypeTemplateParameterCase: CamelCase
+  readability-identifier-naming.ValueTemplateParameterCase: CamelCase
+
+  # Type aliases / Typedefs: CamelCase
+  readability-identifier-naming.TypeAliasCase:         CamelCase
+  readability-identifier-naming.TypedefCase:           CamelCase
+
+  # Macro definitions: UPPER_CASE
+  readability-identifier-naming.MacroDefinitionCase:   UPPER_CASE
+
+  # Concept names: CamelCase
+  readability-identifier-naming.ConceptCase:           CamelCase
+
+  # ---------- readability-identifier-length ----------
+  readability-identifier-length.MinimumVariableNameLength:  3
+  readability-identifier-length.MinimumParameterNameLength: 3
+  readability-identifier-length.MinimumLoopCounterNameLength: 1
+  readability-identifier-length.IgnoredVariableNames:      'id|it|os|in'
+  readability-identifier-length.IgnoredParameterNames:     'id|it|os|in'
+
+  # ---------- readability-function-size ----------
+  readability-function-size.LineThreshold:             50
+  readability-function-size.StatementThreshold:        40
+  readability-function-size.BranchThreshold:           10
+  readability-function-size.ParameterThreshold:        5
+  readability-function-size.NestingThreshold:          4
+  readability-function-size.VariableThreshold:         10
+
+  # ---------- readability-magic-numbers ----------
+  readability-magic-numbers.IgnoredIntegerValues:       '0;1;2;-1'
+  readability-magic-numbers.IgnoredFloatingPointValues:  '0.0;1.0;-1.0'
+  readability-magic-numbers.IgnorePowersOf2IntegerValues: false
+  readability-magic-numbers.IgnoreTypeAliases:           true
+  readability-magic-numbers.IgnoreUserDefinedLiterals:   false
+
+  # ---------- misc ----------
+  misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic: true
+
+  # ---------- cppcoreguidelines ----------
+  cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
+  cppcoreguidelines-special-member-functions.AllowMissingMoveFunctions: false
+
+  # ---------- bugprone ----------
+  bugprone-easily-swappable-parameters.MinimumLength:  2
+  bugprone-easily-swappable-parameters.IgnoreAllGlobalFunctions: false
+  bugprone-easily-swappable-parameters.QualifiersMix:  false
+  bugprone-argument-comment.StrictMode:                true
+  bugprone-assert-side-effect.AssertMacros:            'assert;ASSERT;Q_ASSERT'
+  bugprone-sizeof-expression.WarnOnSizeOfIntegerExpression: true
+  bugprone-suspicious-string-compare.WarnOnImplicitComparison: true
+  bugprone-suspicious-string-compare.WarnOnLogicalNotComparison: true
+
+  # ---------- performance ----------
+  performance-move-const-arg.CheckTriviallyCopyableMove: true
+  performance-move-const-arg.CheckMoveToConstRef:       true
+  performance-unnecessary-value-param.AllowedTypes:     ''
+
+  # ---------- modernize ----------
+  modernize-use-override.AllowOverrideAndFinal:         false
+  modernize-loop-convert.MinConfidence:                 reasonable
+  modernize-use-nullptr.NullMacros:                     'NULL'
+  modernize-use-auto.MinTypeNameLength:                 5
+  modernize-use-default-member-init.UseAssignment:      false
+  modernize-use-emplace.ContainersWithPushBack:         '::std::vector;::std::deque;::std::list'
+  modernize-use-emplace.SmartPointers:                  '::std::unique_ptr;::std::shared_ptr'
+
+  # ---------- concurrency ----------
+  concurrency-mt-unsafe.FunctionSet:                    posix
+
+  # ---------- cert ----------
+  cert-dcl16-c.NewSuffixes:                             'L;LL;LU;LLU'
+  cert-oop57-cpp.MemSetNames:                           '::memset'
+  cert-oop57-cpp.MemCpyNames:                           '::memcpy;::memmove'
+  cert-oop57-cpp.MemCmpNames:                           '::memcmp'
