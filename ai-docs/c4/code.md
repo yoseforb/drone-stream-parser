@@ -1037,7 +1037,7 @@ CMakeLists.txt
 ---
 
 ## Design Rationale Summary
-
+```
 | Decision | Rationale | Trade-offs |
 |----------|-----------|-----------|
 | 3 boundaries not 4 | Clean architecture where it earns its keep (domain isolation, protocol unit tests). No ceremony for infrastructure (integration tested via client). | Requires integration tests; pure unit tests wouldn't catch socket bugs. Justified by domain size. |
@@ -1073,41 +1073,6 @@ CMakeLists.txt
 | **InMemoryDroneRepository** | class | server/include/in_memory_drone_repository.hpp | Memory-based persistence | IDroneRepository |
 | **ConsoleAlertNotifier** | class | server/include/console_alert_notifier.hpp | Stdout alerting | IAlertNotifier |
 | **BlockingQueue<T>** | template | common/include/blocking_queue.hpp | Thread-safe queue | std::mutex, std::condition_variable |
-
----
-
-## Notes and Future Considerations
-
-1. **Production Improvements**:
-   - Replace `InMemoryDroneRepository` with persistent store (SQLite, Redis, etc.)
-   - Add metrics/stats collection (CRC failures, packets/sec, latency percentiles)
-   - Implement multiple client support (thread per connection or epoll-based)
-   - Add configuration file for AlertPolicy and port number
-   - Structured logging (JSON format for parsing)
-
-2. **Performance Optimizations**:
-   - Profile parser's state machine (likely bottleneck)
-   - Lock-free queue if contention measured
-   - Batch writes to repository
-   - Connection pooling if using external database
-
-3. **Robustness**:
-   - Timeout on incomplete packets (optional; current design resumes on next header)
-   - Maximum payload size validation in parser
-   - Connection limit in TcpServer
-   - Graceful degradation if repository/notifier fail
-
-4. **Testing**:
-   - Fuzz testing for parser (AFL with packet generator)
-   - Load testing with concurrent clients
-   - Network fault injection (packet loss, reordering, corruption)
-   - Memory leak detection (Valgrind, AddressSanitizer)
-
-5. **Documentation**:
-   - API documentation (Doxygen)
-   - Wire format specification (binary protocol guide)
-   - Deployment guide (systemd unit, socket activation)
-   - Troubleshooting guide (common errors, debug logs)
 
 ---
 
