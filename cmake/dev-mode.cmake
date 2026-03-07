@@ -3,6 +3,10 @@ include(cmake/folders.cmake)
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)
+  # Make tests depend on auto-formatting
+  if(TARGET tests)
+    add_dependencies(tests auto-format-sources)
+  endif()
 endif()
 
 add_custom_target(
