@@ -45,3 +45,4 @@ HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> HUNT_HEADER
 - **Positive:** `feed()` is noexcept — it processes bytes and emits Telemetry via callback, never fails.
 - **Positive:** MAX_PAYLOAD guard prevents resource exhaustion from malformed data.
 - **Negative:** Rewind resync re-processes bytes, which is slightly less efficient than skip-forward. For packet sizes under 4KB, this is negligible.
+- **Negative:** The callback runs inside the `noexcept` boundary of `feed()`. A throwing callback triggers `std::terminate()`. The callback contract (must not throw, may block) must be documented in the StreamParser interface.

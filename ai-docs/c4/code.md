@@ -335,10 +335,11 @@ void feed(std::span<const uint8_t> chunk) noexcept
 **Callback Semantics**:
 - Called exactly once per valid packet
 - Invoked with fully deserialized Telemetry
-- Exceptions from callback propagate to caller
+- Callback executes synchronously within `feed()` and must not throw (`noexcept` context). A throwing callback triggers `std::terminate()`.
+- If the callback blocks (e.g., bounded queue back-pressure), `feed()` blocks — this is intentional back-pressure propagation through the pipeline (see ADR-006).
 
 **Design Notes**:
-- `noexcept` because state machine can always progress (never fails)
+- `noexcept` because state machine can always progress (never fails). The callback is part of this contract — it must also be noexcept.
 - Callback-based (not returning packets) fits streaming nature
 - Resync strategy: rewind to byte after last `0xAA55`, search again. Prevents infinite loop on persistent corruption.
 - Maintains internal buffer for partial state across `feed()` calls
