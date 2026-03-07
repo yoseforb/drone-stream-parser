@@ -4,6 +4,10 @@
 build/
 cmake-build-*/
 prefix/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
 
 # IDE
 .idea/
