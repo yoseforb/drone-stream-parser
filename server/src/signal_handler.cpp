@@ -27,10 +27,16 @@ SignalHandler::SignalHandler(std::atomic<bool>& stop_flag) {
   sig_action.sa_handler = handleSignal;
   sigemptyset(&sig_action.sa_mask);
   sig_action.sa_flags = 0;
-  if (sigaction(SIGINT, &sig_action, nullptr) == -1) {
+  if (sigaction(SIGINT, &sig_action, &old_sigint_) == -1) {
     spdlog::warn("SignalHandler: sigaction(SIGINT) failed");
   }
-  if (sigaction(SIGTERM, &sig_action, nullptr) == -1) {
+  if (sigaction(SIGTERM, &sig_action, &old_sigterm_) == -1) {
     spdlog::warn("SignalHandler: sigaction(SIGTERM) failed");
   }
+}
+
+SignalHandler::~SignalHandler() {
+  g_stop_flag.store(nullptr, std::memory_order_relaxed);
+  sigaction(SIGINT, &old_sigint_, nullptr);
+  sigaction(SIGTERM, &old_sigterm_, nullptr);
 }
