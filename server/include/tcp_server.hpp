@@ -26,7 +26,7 @@ private:
   std::atomic<bool>& stop_flag_;
   UniqueSocket server_fd_;
 
-  void recvLoop(int client_fd);
+  void recvLoop(const UniqueSocket& client_fd);
 };
 
 #endif // TCP_SERVER_HPP

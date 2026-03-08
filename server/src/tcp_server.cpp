@@ -113,7 +113,7 @@ void TcpServer::run() {
     inet_ntop(AF_INET, &client_addr.sin_addr, ip_str.data(), ip_str.size());
     spdlog::info("TcpServer: client connected from {}", ip_str.data());
 
-    recvLoop(ClientFd.get());
+    recvLoop(ClientFd);
     spdlog::info("TcpServer: client disconnected");
   }
 
@@ -122,13 +122,13 @@ void TcpServer::run() {
   spdlog::info("TcpServer: shut down");
 }
 
-void TcpServer::recvLoop(int client_fd) {
+void TcpServer::recvLoop(const UniqueSocket& client_fd) {
   constexpr std::size_t RecvBufSize = 4096;
   std::array<uint8_t, RecvBufSize> buf{};
 
   while (!stop_flag_) {
     pollfd pfd{};
-    pfd.fd = client_fd;
+    pfd.fd = client_fd.get();
     pfd.events = POLLIN;
 
     constexpr int PollTimeoutMs = 200;
@@ -146,7 +146,7 @@ void TcpServer::recvLoop(int client_fd) {
     }
 
     // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
-    const ssize_t BytesRead = recv(client_fd, buf.data(), buf.size(), 0);
+    const ssize_t BytesRead = recv(client_fd.get(), buf.data(), buf.size(), 0);
     if (BytesRead < 0) {
       if (errno == EINTR) {
         continue;
