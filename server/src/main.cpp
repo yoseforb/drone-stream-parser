@@ -57,7 +57,9 @@ auto parsePort(int argc, char** argv) -> uint16_t {
 struct Pipeline {
   BlockingQueue<std::vector<uint8_t>> raw_queue{QueueCapacity};
   BlockingQueue<Telemetry> parsed_queue{QueueCapacity};
-  uint64_t packets_processed{0};
+  // Atomic for clarity of intent. The join() provides the actual
+  // happens-before guarantee for the read in main().
+  std::atomic<uint64_t> packets_processed{0};
 };
 
 void runParseStage(Pipeline& pipeline, StreamParser& parser) {
@@ -70,7 +72,7 @@ void runParseStage(Pipeline& pipeline, StreamParser& parser) {
 void runProcessStage(Pipeline& pipeline, ProcessTelemetry& use_case) {
   while (auto tel = pipeline.parsed_queue.pop()) {
     use_case.execute(*tel);
-    ++pipeline.packets_processed;
+    pipeline.packets_processed.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
@@ -122,8 +124,8 @@ auto main(int argc, char** argv) -> int {
   spdlog::info(
       "Shutdown complete. packets_processed={} crc_failures={} malformed={} "
       "active_drones={}",
-      pipeline.packets_processed, parser.getCrcFailCount(),
-      parser.getMalformedCount(), repo.size());
+      pipeline.packets_processed.load(std::memory_order_relaxed),
+      parser.getCrcFailCount(), parser.getMalformedCount(), repo.size());
 
   return 0;
 }
