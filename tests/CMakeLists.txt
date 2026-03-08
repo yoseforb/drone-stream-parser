@@ -7,10 +7,15 @@ add_executable(tests
   protocol/serializer_test.cpp
   protocol/parser_test.cpp
   common/blocking_queue_test.cpp
+  client/packet_builder_test.cpp
+  ${CMAKE_SOURCE_DIR}/client/src/packet_builder.cpp
 )
 target_link_libraries(tests PRIVATE protocol domain common GTest::gtest_main GTest::gmock)
 target_compile_features(tests PRIVATE cxx_std_20)
-target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(tests PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}/client/include
+)
 
 enable_testing()
 include(GoogleTest)
