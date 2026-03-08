@@ -28,6 +28,7 @@ constexpr uint16_t DefaultPort = 9000;
 constexpr int MinPort = 1;
 constexpr int MaxPort = 65535;
 constexpr size_t QueueCapacity = 256;
+constexpr uint64_t LogInterval = 1000;
 
 auto parsePort(int argc, char** argv) -> uint16_t {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -58,6 +59,7 @@ struct Pipeline {
   BlockingQueue<Telemetry> parsed_queue{QueueCapacity};
   // Atomic for clarity of intent. The join() provides the actual
   // happens-before guarantee for the read in main().
+  std::atomic<uint64_t> packets_parsed{0};
   std::atomic<uint64_t> packets_processed{0};
 };
 
@@ -68,22 +70,29 @@ void runParseStage(Pipeline& pipeline, StreamParser& parser) {
   pipeline.parsed_queue.close();
 }
 
-void runProcessStage(Pipeline& pipeline, ProcessTelemetry& use_case) {
+void runProcessStage(Pipeline& pipeline, ProcessTelemetry& use_case,
+                     InMemoryDroneRepository& repo) {
   while (auto tel = pipeline.parsed_queue.pop()) {
     use_case.execute(*tel);
-    pipeline.packets_processed.fetch_add(1, std::memory_order_relaxed);
+    uint64_t count =
+        pipeline.packets_processed.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (count % LogInterval == 0) {
+      spdlog::info("[process] packets_processed={} active_drones={}", count,
+                   repo.size());
+    }
   }
 }
 
 void runPipeline(TcpServer& server, Pipeline& pipeline, StreamParser& parser,
-                 ProcessTelemetry& use_case) {
+                 ProcessTelemetry& use_case, InMemoryDroneRepository& repo) {
   std::thread recv_thread{[&server]() { server.run(); }};
 
   std::thread parse_thread{
       [&pipeline, &parser]() { runParseStage(pipeline, parser); }};
 
-  std::thread process_thread{
-      [&pipeline, &use_case]() { runProcessStage(pipeline, use_case); }};
+  std::thread process_thread{[&pipeline, &use_case, &repo]() {
+    runProcessStage(pipeline, use_case, repo);
+  }};
 
   process_thread.join();
   parse_thread.join();
@@ -112,17 +121,25 @@ auto main(int argc, char** argv) -> int {
                  "speed_limit={:.1f}m/s",
                  Port, Policy.altitude_limit, Policy.speed_limit);
 
-    StreamParser parser{[&pipeline](Telemetry tel) {
+    StreamParser parser{[&pipeline, &parser](Telemetry tel) {
       pipeline.parsed_queue.push(std::move(tel));
+      uint64_t count =
+          pipeline.packets_parsed.fetch_add(1, std::memory_order_relaxed) + 1;
+      if (count % LogInterval == 0) {
+        spdlog::info("[parse] packets_parsed={} crc_failures={} malformed={}",
+                     count, parser.getCrcFailCount(),
+                     parser.getMalformedCount());
+      }
     }};
 
-    runPipeline(server, pipeline, parser, use_case);
+    runPipeline(server, pipeline, parser, use_case, repo);
 
-    spdlog::info(
-        "Shutdown complete. packets_processed={} crc_failures={} malformed={} "
-        "active_drones={}",
-        pipeline.packets_processed.load(std::memory_order_relaxed),
-        parser.getCrcFailCount(), parser.getMalformedCount(), repo.size());
+    spdlog::info("Shutdown complete. packets_parsed={} packets_processed={} "
+                 "crc_failures={} malformed={} active_drones={}",
+                 pipeline.packets_parsed.load(std::memory_order_relaxed),
+                 pipeline.packets_processed.load(std::memory_order_relaxed),
+                 parser.getCrcFailCount(), parser.getMalformedCount(),
+                 repo.size());
   } catch (const std::runtime_error& ex) {
     spdlog::error("{}", ex.what());
     return EXIT_FAILURE;
