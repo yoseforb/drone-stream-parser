@@ -3,6 +3,7 @@
 #include <atomic>
 #include <csignal>
 #include <signal.h> // NOLINT(modernize-deprecated-headers) — sigaction is POSIX, not C++
+#include <stdexcept>
 
 #include <spdlog/spdlog.h>
 
@@ -21,7 +22,11 @@ void handleSignal(int /*sig*/) {
 } // namespace
 
 SignalHandler::SignalHandler(std::atomic<bool>& stop_flag) {
-  g_stop_flag.store(&stop_flag, std::memory_order_relaxed);
+  auto* expected = static_cast<std::atomic<bool>*>(nullptr);
+  if (!g_stop_flag.compare_exchange_strong(expected, &stop_flag,
+                                           std::memory_order_relaxed)) {
+    throw std::logic_error("SignalHandler: only one instance allowed");
+  }
 
   struct sigaction sig_action{};
   sig_action.sa_handler = handleSignal;
