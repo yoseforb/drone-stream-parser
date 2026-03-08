@@ -6,8 +6,9 @@ add_executable(tests
   protocol/crc16_test.cpp
   protocol/serializer_test.cpp
   protocol/parser_test.cpp
+  common/blocking_queue_test.cpp
 )
-target_link_libraries(tests PRIVATE protocol domain GTest::gtest_main GTest::gmock)
+target_link_libraries(tests PRIVATE protocol domain common GTest::gtest_main GTest::gmock)
 target_compile_features(tests PRIVATE cxx_std_20)
 target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

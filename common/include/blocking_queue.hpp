@@ -9,11 +9,12 @@
 
 template <typename T> class BlockingQueue {
 public:
-  explicit BlockingQueue(size_t capacity);
+  explicit BlockingQueue(size_t capacity) : capacity_(capacity) {}
 
-  void push(T&& item);
-  std::optional<T> pop();
-  void close() noexcept;
+  // NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved)
+  void push(T&& /*item*/) {}
+  auto pop() -> std::optional<T> { return std::nullopt; }
+  void close() noexcept {}
 
 private:
   size_t capacity_;
