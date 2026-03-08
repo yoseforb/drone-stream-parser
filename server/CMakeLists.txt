@@ -3,6 +3,7 @@ add_executable(drone_server
   src/signal_handler.cpp
   src/in_memory_drone_repo.cpp
   src/console_alert_notifier.cpp
+  src/tcp_server.cpp
   src/main.cpp
 )
 target_include_directories(drone_server PRIVATE include)
