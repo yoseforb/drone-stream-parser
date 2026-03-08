@@ -126,6 +126,15 @@
       }
     },
     {
+      "name": "ci-tsan",
+      "binaryDir": "${sourceDir}/build/tsan",
+      "inherits": ["ci-linux", "dev-mode"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Sanitize",
+        "CMAKE_CXX_FLAGS_SANITIZE": "-O2 -g -fsanitize=thread -fno-omit-frame-pointer"
+      }
+    },
+    {
       "name": "ci-build",
       "binaryDir": "${sourceDir}/build",
       "hidden": true
