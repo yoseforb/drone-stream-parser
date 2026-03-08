@@ -28,19 +28,17 @@ constexpr int MinPort = 1;
 constexpr int MaxPort = 65535;
 constexpr size_t QueueCapacity = 256;
 
-// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 auto parsePort(int argc, char** argv) -> uint16_t {
-  for (int i = 1; i + 1 < argc; ++i) {
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    auto arg = std::string(argv[i]);
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  const auto Args = std::span<char*>(argv, static_cast<std::size_t>(argc));
+  for (std::size_t i = 1; i + 1 < Args.size(); ++i) {
+    auto arg = std::string(Args[i]);
     if (arg == "--port") {
       int port_value = 0;
       try {
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-        port_value = std::stoi(argv[i + 1]);
+        port_value = std::stoi(Args[i + 1]);
       } catch (const std::exception& ex) {
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-        spdlog::error("invalid --port value '{}': {}", argv[i + 1], ex.what());
+        spdlog::error("invalid --port value '{}': {}", Args[i + 1], ex.what());
         std::exit(EXIT_FAILURE); // NOLINT(concurrency-mt-unsafe)
       }
       if (port_value < MinPort || port_value > MaxPort) {
