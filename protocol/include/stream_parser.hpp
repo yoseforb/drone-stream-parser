@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -31,7 +32,8 @@ private:
   auto readPayload() noexcept -> bool;
   auto readCrc() noexcept -> bool;
   void resync() noexcept;
-  [[nodiscard]] auto deserializePayload() const noexcept -> Telemetry;
+  [[nodiscard]] auto deserializePayload() const noexcept
+      -> std::optional<Telemetry>;
 
   std::function<void(Telemetry)> on_packet_;
   std::vector<uint8_t> buffer_;

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -14,7 +15,7 @@
 
 namespace {
 
-static_assert(sizeof(double) == 8,  // NOLINT(readability-magic-numbers)
+static_assert(sizeof(double) == 8, // NOLINT(readability-magic-numbers)
               "Protocol requires IEEE 754 64-bit doubles");
 
 constexpr uint8_t HeaderByte0 = 0xAAU;
@@ -27,6 +28,10 @@ constexpr std::size_t DoubleFieldSize = 8U;
 constexpr std::size_t TimestampFieldSize = 8U;
 constexpr std::size_t IdLenFieldSize = 2U;
 
+// Minimum payload: IdLen(2) + 4*double(32) + timestamp(8) = 42
+constexpr std::size_t MinFixedPayloadSize =
+    IdLenFieldSize + (4U * DoubleFieldSize) + TimestampFieldSize;
+
 auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint16_t {
   uint16_t value = 0;
@@ -37,14 +42,14 @@ auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
 auto readDouble(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> double {
   double value = 0.0;
-  std::memcpy(&value, &buf[offset], DoubleSize);
+  std::memcpy(&value, &buf[offset], DoubleFieldSize);
   return value;
 }
 
 auto readU64Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint64_t {
   uint64_t value = 0;
-  std::memcpy(&value, &buf[offset], Uint64Size);
+  std::memcpy(&value, &buf[offset], TimestampFieldSize);
   return value;
 }
 
@@ -101,11 +106,11 @@ auto StreamParser::huntHeader() noexcept -> bool {
 }
 
 auto StreamParser::readLength() noexcept -> bool {
-  if (read_pos_ + LengthSize > buffer_.size()) {
+  if (read_pos_ + LengthFieldSize > buffer_.size()) {
     return false;
   }
   pending_length_ = readU16Le(buffer_, read_pos_);
-  read_pos_ += LengthSize;
+  read_pos_ += LengthFieldSize;
   if (static_cast<std::size_t>(pending_length_) > MaxPayload) {
     ++malformed_count_;
     resync();
@@ -125,14 +130,14 @@ auto StreamParser::readPayload() noexcept -> bool {
 }
 
 auto StreamParser::readCrc() noexcept -> bool {
-  if (read_pos_ + CrcSize > buffer_.size()) {
+  if (read_pos_ + CrcFieldSize > buffer_.size()) {
     return false;
   }
   uint16_t const ReceivedCrc = readU16Le(buffer_, read_pos_);
-  read_pos_ += CrcSize;
+  read_pos_ += CrcFieldSize;
 
   auto const CrcDataLen =
-      HeaderSize + LengthSize + static_cast<std::size_t>(pending_length_);
+      HeaderSize + LengthFieldSize + static_cast<std::size_t>(pending_length_);
   auto const ComputedCrc = crc16(
       std::span<const uint8_t>(buffer_).subspan(header_start_, CrcDataLen));
 
@@ -142,7 +147,12 @@ auto StreamParser::readCrc() noexcept -> bool {
     return true;
   }
 
-  Telemetry tel = deserializePayload();
+  auto tel = deserializePayload();
+  if (!tel.has_value()) {
+    ++malformed_count_;
+    resync();
+    return true;
+  }
 
   buffer_.erase(buffer_.begin(),
                 buffer_.begin() + static_cast<ptrdiff_t>(read_pos_));
@@ -151,7 +161,7 @@ auto StreamParser::readCrc() noexcept -> bool {
   pending_length_ = 0;
   state_ = State::HUNT_HEADER;
 
-  on_packet_(std::move(tel));
+  on_packet_(std::move(*tel));
   return true;
 }
 
@@ -160,11 +170,17 @@ void StreamParser::resync() noexcept {
   state_ = State::HUNT_HEADER;
 }
 
-auto StreamParser::deserializePayload() const noexcept -> Telemetry {
-  std::size_t pos = header_start_ + HeaderSize + LengthSize;
+auto StreamParser::deserializePayload() const noexcept
+    -> std::optional<Telemetry> {
+  std::size_t pos = header_start_ + HeaderSize + LengthFieldSize;
 
   uint16_t const IdLen = readU16Le(buffer_, pos);
-  pos += Uint16Size;
+  pos += IdLenFieldSize;
+
+  if (static_cast<std::size_t>(IdLen) + MinFixedPayloadSize >
+      static_cast<std::size_t>(pending_length_)) {
+    return std::nullopt;
+  }
 
   std::string drone_id(buffer_.begin() + static_cast<ptrdiff_t>(pos),
                        buffer_.begin() + static_cast<ptrdiff_t>(pos) +
@@ -172,22 +188,22 @@ auto StreamParser::deserializePayload() const noexcept -> Telemetry {
   pos += static_cast<std::size_t>(IdLen);
 
   double const Latitude = readDouble(buffer_, pos);
-  pos += DoubleSize;
+  pos += DoubleFieldSize;
   double const Longitude = readDouble(buffer_, pos);
-  pos += DoubleSize;
+  pos += DoubleFieldSize;
   double const Altitude = readDouble(buffer_, pos);
-  pos += DoubleSize;
+  pos += DoubleFieldSize;
   double const Speed = readDouble(buffer_, pos);
-  pos += DoubleSize;
+  pos += DoubleFieldSize;
 
   uint64_t const Timestamp = readU64Le(buffer_, pos);
 
-  return {.drone_id = std::move(drone_id),
-          .latitude = Latitude,
-          .longitude = Longitude,
-          .altitude = Altitude,
-          .speed = Speed,
-          .timestamp = Timestamp};
+  return Telemetry{.drone_id = std::move(drone_id),
+                   .latitude = Latitude,
+                   .longitude = Longitude,
+                   .altitude = Altitude,
+                   .speed = Speed,
+                   .timestamp = Timestamp};
 }
 
 uint64_t StreamParser::getCrcFailCount() const noexcept {

@@ -1,6 +1,7 @@
 #include "packet_serializer.hpp"
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -22,6 +23,8 @@ constexpr std::size_t IdLenFieldSize = 2;
 constexpr std::size_t DoubleFieldSize = 8;
 constexpr std::size_t TimestampFieldSize = 8;
 constexpr std::size_t NumDoubleFields = 4;
+constexpr std::size_t FixedPayloadOverhead =
+    IdLenFieldSize + (NumDoubleFields * DoubleFieldSize) + TimestampFieldSize;
 
 void appendU16Le(std::vector<uint8_t>& buf, uint16_t value) {
   std::array<uint8_t, LengthFieldSize> bytes{};
@@ -44,9 +47,10 @@ void appendU64Le(std::vector<uint8_t>& buf, uint64_t value) {
 } // namespace
 
 std::vector<uint8_t> PacketSerializer::serialize(const Telemetry& tel) {
-  auto const PayloadSize = IdLenFieldSize + tel.drone_id.size() +
-                           (NumDoubleFields * DoubleFieldSize) +
-                           TimestampFieldSize;
+  assert(tel.drone_id.size() <= UINT16_MAX - FixedPayloadOverhead &&
+         "drone_id too large for uint16_t payload length");
+
+  auto const PayloadSize = FixedPayloadOverhead + tel.drone_id.size();
 
   std::vector<uint8_t> packet;
   packet.reserve(HeaderSize + LengthFieldSize + PayloadSize + CrcFieldSize);
