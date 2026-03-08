@@ -32,9 +32,13 @@ cmake --build --preset=dev -t run-client
 ```bash
 cmake --build --preset=dev && ctest --preset=dev
 ```
-Do not consider a change complete until the build passes with zero warnings
-and all tests pass. clang-tidy runs as part of the build — treat its
-diagnostics as errors. Fix all issues before moving on.
+
+**Rules — no exceptions:**
+1. Run build + tests after EVERY code change, no matter how small.
+2. NEVER `git commit` before build + tests pass. A commit without a green build is forbidden.
+3. Do not consider a change complete until the build passes with zero warnings and all tests pass.
+4. clang-tidy runs as part of the build — treat its diagnostics as errors.
+5. If build or tests fail, fix all issues and re-run before doing anything else.
 
 ---
 
