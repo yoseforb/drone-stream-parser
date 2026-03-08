@@ -16,7 +16,7 @@
 class InMemoryDroneRepository : public IDroneRepository {
 public:
   std::optional<Drone> findById(const std::string& drone_id) override;
-  void save(const Drone& drone) override;
+  void save(Drone drone) override;
 
   [[nodiscard]] std::size_t size() const;
 

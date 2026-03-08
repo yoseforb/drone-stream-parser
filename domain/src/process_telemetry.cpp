@@ -16,7 +16,7 @@ void ProcessTelemetry::execute(const Telemetry& telemetry) {
       existing.has_value() ? std::move(*existing) : Drone(telemetry.drone_id);
 
   auto transitions = drone.updateFrom(telemetry, policy_);
-  repository_->save(drone);
+  repository_->save(std::move(drone));
 
   if (!transitions.empty()) {
     notifier_->notify(telemetry.drone_id, transitions);

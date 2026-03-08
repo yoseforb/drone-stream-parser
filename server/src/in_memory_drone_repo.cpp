@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "drone.hpp"
 
@@ -15,8 +16,9 @@ InMemoryDroneRepository::findById(const std::string& drone_id) {
   return iter->second;
 }
 
-void InMemoryDroneRepository::save(const Drone& drone) {
-  drones_.insert_or_assign(drone.getId(), drone);
+void InMemoryDroneRepository::save(Drone drone) {
+  auto id = drone.getId();
+  drones_.insert_or_assign(std::move(id), std::move(drone));
 }
 
 std::size_t InMemoryDroneRepository::size() const { return drones_.size(); }

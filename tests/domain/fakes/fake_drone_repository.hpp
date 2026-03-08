@@ -19,8 +19,9 @@ public:
     return iter->second;
   }
 
-  void save(const Drone& drone) override {
-    drones_.insert_or_assign(drone.getId(), drone);
+  void save(Drone drone) override {
+    auto id = drone.getId();
+    drones_.insert_or_assign(std::move(id), std::move(drone));
   }
 
   [[nodiscard]] bool contains(const std::string& drone_id) const {
