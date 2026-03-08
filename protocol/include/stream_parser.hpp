@@ -26,12 +26,18 @@ private:
     READ_CRC,
   };
 
+  auto huntHeader() noexcept -> bool;
+  auto readLength() noexcept -> bool;
+  auto readPayload() noexcept -> bool;
+  auto readCrc() noexcept -> bool;
+  void resync() noexcept;
+  [[nodiscard]] auto deserializePayload() const noexcept -> Telemetry;
+
   std::function<void(Telemetry)> on_packet_;
   std::vector<uint8_t> buffer_;
-  size_t read_pos_{0};         // NOLINT(clang-diagnostic-unused-private-field)
-  size_t header_start_{0};     // NOLINT(clang-diagnostic-unused-private-field)
-  uint16_t pending_length_{0}; // NOLINT(clang-diagnostic-unused-private-field)
-  // NOLINTNEXTLINE(clang-diagnostic-unused-private-field)
+  size_t read_pos_{0};
+  size_t header_start_{0};
+  uint16_t pending_length_{0};
   State state_{State::HUNT_HEADER};
   uint64_t crc_fail_count_{0};
   uint64_t malformed_count_{0};
