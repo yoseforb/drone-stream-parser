@@ -12,7 +12,6 @@ constexpr uint16_t HighBitMask = 0x8000U;
 constexpr std::size_t TableSize = 256;
 constexpr int BitsPerByte = 8;
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 constexpr auto buildTable() noexcept -> std::array<uint16_t, TableSize> {
   std::array<uint16_t, TableSize> table{};
   for (std::size_t i = 0; i < TableSize; ++i) {

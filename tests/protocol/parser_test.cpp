@@ -14,7 +14,6 @@
 
 namespace {
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 auto makeTel(const std::string& id, double alt, double speed,
              uint64_t timestamp) -> Telemetry {
   return {.drone_id = id,

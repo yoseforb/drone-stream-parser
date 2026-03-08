@@ -24,7 +24,6 @@ constexpr std::size_t DoubleSize = 8U;
 constexpr std::size_t Uint64Size = 8U;
 constexpr std::size_t Uint16Size = 2U;
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint16_t {
   uint16_t value = 0;
@@ -32,7 +31,6 @@ auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
   return value;
 }
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 auto readDouble(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> double {
   double value = 0.0;
@@ -40,7 +38,6 @@ auto readDouble(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
   return value;
 }
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 auto readU64Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint64_t {
   uint64_t value = 0;

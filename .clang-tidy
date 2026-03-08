@@ -84,6 +84,7 @@ Checks: >
   -google-readability-namespace-comments,
   -llvm-header-guard,
   -llvm-include-order,
+  -llvm-prefer-static-over-anonymous-namespace,
   -misc-unused-alias-decls,
 
 # All enabled checks are treated as errors — strict enforcement.

@@ -20,7 +20,6 @@ constexpr double AboveSpeedLimit = 60.0;
 constexpr double SafeSpeed = 10.0;
 constexpr uint64_t DefaultTimestamp = 1000;
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 Telemetry makeTelemetry(const std::string& id, double altitude, double speed) {
   return {.drone_id = id,
           .latitude = 0.0,

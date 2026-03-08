@@ -19,7 +19,6 @@ constexpr double BelowSpeedLimit = 30.0;
 constexpr double WellBelowSpeedLimit = 20.0;
 constexpr uint64_t DefaultTimestamp = 1000;
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 Telemetry makeTelemetry(double altitude, double speed) {
   return {.drone_id = "D001",
           .latitude = 0.0,

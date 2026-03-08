@@ -20,21 +20,18 @@ constexpr std::size_t DoubleFieldSize = 8;
 constexpr std::size_t TimestampFieldSize = 8;
 constexpr std::size_t NumDoubleFields = 4;
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 void appendU16Le(std::vector<uint8_t>& buf, uint16_t value) {
   std::array<uint8_t, LengthFieldSize> bytes{};
   std::memcpy(bytes.data(), &value, sizeof(value));
   buf.insert(buf.end(), bytes.begin(), bytes.end());
 }
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 void appendDouble(std::vector<uint8_t>& buf, double value) {
   std::array<uint8_t, DoubleFieldSize> bytes{};
   std::memcpy(bytes.data(), &value, sizeof(value));
   buf.insert(buf.end(), bytes.begin(), bytes.end());
 }
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 void appendU64Le(std::vector<uint8_t>& buf, uint64_t value) {
   std::array<uint8_t, TimestampFieldSize> bytes{};
   std::memcpy(bytes.data(), &value, sizeof(value));

@@ -13,7 +13,6 @@
 
 namespace {
 
-// NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 auto makeSimpleTelemetry() -> Telemetry {
   return Telemetry{.drone_id = "D1",
                    .latitude = 1.0,
