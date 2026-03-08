@@ -24,7 +24,7 @@ constexpr auto buildTable() noexcept -> std::array<uint16_t, TableSize> {
         crc = static_cast<uint16_t>(crc << 1U);
       }
     }
-    table.at(i) = crc;
+    table[i] = crc;
   }
   return table;
 }
@@ -35,10 +35,10 @@ constexpr auto CrcTable = buildTable();
 
 uint16_t crc16(std::span<const uint8_t> data) noexcept {
   uint16_t crc = 0x0000U;
-  for (uint8_t const Byte : data) {
-    auto const Index = static_cast<uint8_t>((crc >> BitsPerByte) ^ Byte);
+  for (uint8_t const byte_val : data) {
+    auto const index = static_cast<uint8_t>((crc >> BitsPerByte) ^ byte_val);
     crc = static_cast<uint16_t>(static_cast<unsigned>(crc << BitsPerByte) ^
-                                CrcTable.at(Index));
+                                CrcTable[index]);
   }
   return crc;
 }
