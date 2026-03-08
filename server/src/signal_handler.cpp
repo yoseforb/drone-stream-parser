@@ -7,16 +7,19 @@
 namespace {
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::atomic<bool>* g_stop_flag{nullptr};
+std::atomic<std::atomic<bool>*> g_stop_flag{nullptr};
 
 void handleSignal(int /*sig*/) {
-  g_stop_flag->store(true, std::memory_order_relaxed);
+  auto* flag = g_stop_flag.load(std::memory_order_relaxed);
+  if (flag != nullptr) {
+    flag->store(true, std::memory_order_relaxed);
+  }
 }
 
 } // namespace
 
 SignalHandler::SignalHandler(std::atomic<bool>& stop_flag) {
-  g_stop_flag = &stop_flag;
+  g_stop_flag.store(&stop_flag, std::memory_order_relaxed);
 
   struct sigaction sig_action{};
   sig_action.sa_handler = handleSignal;
