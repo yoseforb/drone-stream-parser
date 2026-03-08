@@ -10,10 +10,19 @@
 
 #include "telemetry.hpp"
 
+/// Streaming parser for drone telemetry packets.
+///
+/// Internally buffers bytes via std::vector which may allocate. If allocation
+/// fails inside a noexcept method, std::terminate is called. This is by design:
+/// OOM during stream parsing is unrecoverable in an embedded context.
 class StreamParser {
 public:
+  /// @param on_packet Callback invoked for each valid packet. Must not throw —
+  ///        throwing from the callback violates noexcept and calls
+  ///        std::terminate.
   explicit StreamParser(std::function<void(Telemetry)> on_packet);
 
+  /// Append raw bytes to the internal buffer and parse any complete packets.
   void feed(std::span<const uint8_t> chunk) noexcept;
 
   [[nodiscard]] uint64_t getCrcFailCount() const noexcept;
