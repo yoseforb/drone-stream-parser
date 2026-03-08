@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include <spdlog/spdlog.h>
 
@@ -287,6 +289,30 @@ void runInterleaved(int sock) {
   spdlog::info("scenario=interleaved: done");
 }
 
+void runAll(int sock) {
+  const std::array<std::pair<const char*, std::function<void(int)>>, 7>
+      Scenarios{{
+          {"normal", runNormal},
+          {"fragmented", runFragmented},
+          {"corrupt", runCorrupt},
+          {"stress", runStress},
+          {"alert", runAlert},
+          {"multi-drone", runMultiDrone},
+          {"interleaved", runInterleaved},
+      }};
+
+  spdlog::info("scenario=all: running {} scenarios in sequence",
+               Scenarios.size());
+
+  for (const auto& [name, func] : Scenarios) {
+    spdlog::info("scenario=all: starting '{}'", name);
+    func(sock);
+    spdlog::info("scenario=all: finished '{}'", name);
+  }
+
+  spdlog::info("scenario=all: all scenarios complete");
+}
+
 } // namespace
 
 auto main(int argc, char** argv) -> int {
@@ -296,7 +322,7 @@ auto main(int argc, char** argv) -> int {
     spdlog::error(
         "usage: drone_client --scenario <name> [--host <ip>] [--port <n>]");
     spdlog::error("scenarios: normal, fragmented, corrupt, stress, alert, "
-                  "multi-drone, interleaved");
+                  "multi-drone, interleaved, all");
     return 1;
   }
 
@@ -308,6 +334,7 @@ auto main(int argc, char** argv) -> int {
       {"alert", runAlert},
       {"multi-drone", runMultiDrone},
       {"interleaved", runInterleaved},
+      {"all", runAll},
   };
 
   auto iter = Dispatch.find(args.scenario);
