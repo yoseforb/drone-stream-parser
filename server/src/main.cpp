@@ -107,8 +107,7 @@ auto main(int argc, char** argv) -> int {
 
   // Infrastructure
   std::atomic<bool> stop_flag{false};
-  // NOLINTNEXTLINE(misc-const-correctness)
-  [[maybe_unused]] SignalHandler signal_handler{stop_flag};
+  [[maybe_unused]] const SignalHandler SignalGuard{stop_flag};
   TcpServer server{port, pipeline.raw_queue, stop_flag};
 
   spdlog::info("drone_server starting on port {}. altitude_limit={:.1f}m "
