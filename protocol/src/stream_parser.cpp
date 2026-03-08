@@ -14,20 +14,23 @@
 
 namespace {
 
+static_assert(sizeof(double) == 8,  // NOLINT(readability-magic-numbers)
+              "Protocol requires IEEE 754 64-bit doubles");
+
 constexpr uint8_t HeaderByte0 = 0xAAU;
 constexpr uint8_t HeaderByte1 = 0x55U;
 constexpr std::size_t MaxPayload = 4096U;
 constexpr std::size_t HeaderSize = 2U;
-constexpr std::size_t LengthSize = 2U;
-constexpr std::size_t CrcSize = 2U;
-constexpr std::size_t DoubleSize = 8U;
-constexpr std::size_t Uint64Size = 8U;
-constexpr std::size_t Uint16Size = 2U;
+constexpr std::size_t LengthFieldSize = 2U;
+constexpr std::size_t CrcFieldSize = 2U;
+constexpr std::size_t DoubleFieldSize = 8U;
+constexpr std::size_t TimestampFieldSize = 8U;
+constexpr std::size_t IdLenFieldSize = 2U;
 
 auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint16_t {
   uint16_t value = 0;
-  std::memcpy(&value, &buf[offset], Uint16Size);
+  std::memcpy(&value, &buf[offset], IdLenFieldSize);
   return value;
 }
 
