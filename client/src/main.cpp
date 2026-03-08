@@ -1,8 +1,4 @@
 #include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -11,9 +7,11 @@
 #include <cstring>
 #include <exception>
 #include <functional>
+#include <netinet/in.h>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -23,6 +21,7 @@
 #include "alert_policy.hpp"
 #include "packet_builder.hpp"
 #include "telemetry.hpp"
+#include "unique_socket.hpp"
 
 namespace {
 
@@ -81,9 +80,9 @@ auto parseArgs(int argc, char** argv) -> Args {
   return args;
 }
 
-auto tcpConnect(const std::string& host, uint16_t port) -> int {
-  const int Sock = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (Sock < 0) {
+auto tcpConnect(const std::string& host, uint16_t port) -> UniqueSocket {
+  UniqueSocket sock(::socket(AF_INET, SOCK_STREAM, 0));
+  if (!sock) {
     throw std::runtime_error(
         std::string("socket() failed: ") +
         std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
@@ -93,19 +92,18 @@ auto tcpConnect(const std::string& host, uint16_t port) -> int {
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) <= 0) {
-    ::close(Sock);
     throw std::runtime_error("inet_pton() failed for host: " + host);
   }
 
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  if (::connect(Sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    ::close(Sock);
+  if (::connect(sock.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) <
+      0) {
     throw std::runtime_error(
         std::string("connect() failed: ") +
         std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
   }
 
-  return Sock;
+  return sock;
 }
 
 void sendAll(int sock, std::span<const uint8_t> data) {
@@ -343,7 +341,7 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
 
-  int sock = -1;
+  UniqueSocket sock;
   try {
     sock = tcpConnect(args.host, args.port);
   } catch (const std::runtime_error& ex) {
@@ -354,14 +352,12 @@ auto main(int argc, char** argv) -> int {
   spdlog::info("connected to {}:{}", args.host, args.port);
 
   try {
-    iter->second(sock);
+    iter->second(sock.get());
   } catch (const std::exception& ex) {
     spdlog::error("scenario '{}' failed: {}", args.scenario, ex.what());
-    ::close(sock);
     return 1;
   }
 
-  ::close(sock);
   spdlog::info("disconnected from {}:{}", args.host, args.port);
 
   return 0;

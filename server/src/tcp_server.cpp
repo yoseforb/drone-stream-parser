@@ -20,12 +20,13 @@
 #include <spdlog/spdlog.h>
 
 #include "blocking_queue.hpp"
+#include "unique_socket.hpp"
 
 namespace {
 
-auto createListeningSocket(uint16_t port) -> int {
-  const int Sfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (Sfd < 0) {
+auto createListeningSocket(uint16_t port) -> UniqueSocket {
+  UniqueSocket sfd(socket(AF_INET, SOCK_STREAM, 0));
+  if (!sfd) {
     throw std::runtime_error(
         std::string("TcpServer: socket() failed: ") +
         std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
@@ -33,7 +34,7 @@ auto createListeningSocket(uint16_t port) -> int {
 
   int opt = 1;
   // NOLINTNEXTLINE(misc-include-cleaner)
-  if (setsockopt(Sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+  if (setsockopt(sfd.get(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
     spdlog::warn("TcpServer: setsockopt(SO_REUSEADDR) failed: {}",
                  std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
   }
@@ -44,22 +45,20 @@ auto createListeningSocket(uint16_t port) -> int {
   addr.sin_port = htons(port);
 
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  if (bind(Sfd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    auto msg = std::string("TcpServer: bind() failed: ") +
-               std::strerror(errno); // NOLINT(concurrency-mt-unsafe)
-    close(Sfd);
-    throw std::runtime_error(msg);
+  if (bind(sfd.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+    throw std::runtime_error(
+        std::string("TcpServer: bind() failed: ") +
+        std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
   }
 
-  if (listen(Sfd, 5) < 0) { // NOLINT(readability-magic-numbers)
-    auto msg = std::string("TcpServer: listen() failed: ") +
-               std::strerror(errno); // NOLINT(concurrency-mt-unsafe)
-    close(Sfd);
-    throw std::runtime_error(msg);
+  if (listen(sfd.get(), 5) < 0) { // NOLINT(readability-magic-numbers)
+    throw std::runtime_error(
+        std::string("TcpServer: listen() failed: ") +
+        std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
   }
 
   spdlog::info("TcpServer: listening on port {}", port);
-  return Sfd;
+  return sfd;
 }
 
 auto acceptClient(int server_fd, sockaddr_in& client_addr) -> int {
@@ -76,18 +75,13 @@ TcpServer::TcpServer(uint16_t port, BlockingQueue<std::vector<uint8_t>>& queue,
     : queue_(queue), stop_flag_(stop_flag),
       server_fd_(createListeningSocket(port)) {}
 
-TcpServer::~TcpServer() {
-  if (server_fd_ >= 0) {
-    close(server_fd_);
-    server_fd_ = -1;
-  }
-}
+TcpServer::~TcpServer() = default;
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,readability-function-size)
 void TcpServer::run() {
   while (!stop_flag_) {
     pollfd pfd{};
-    pfd.fd = server_fd_;
+    pfd.fd = server_fd_.get();
     pfd.events = POLLIN;
 
     constexpr int PollTimeoutMs = 200;
@@ -105,8 +99,8 @@ void TcpServer::run() {
     }
 
     sockaddr_in client_addr{};
-    const int ClientFd = acceptClient(server_fd_, client_addr);
-    if (ClientFd < 0) {
+    const UniqueSocket ClientFd(acceptClient(server_fd_.get(), client_addr));
+    if (!ClientFd) {
       if (errno == EINTR || errno == EAGAIN) {
         continue;
       }
@@ -119,15 +113,11 @@ void TcpServer::run() {
     inet_ntop(AF_INET, &client_addr.sin_addr, ip_str.data(), ip_str.size());
     spdlog::info("TcpServer: client connected from {}", ip_str.data());
 
-    recvLoop(ClientFd);
-    close(ClientFd);
+    recvLoop(ClientFd.get());
     spdlog::info("TcpServer: client disconnected");
   }
 
-  if (server_fd_ >= 0) {
-    close(server_fd_);
-    server_fd_ = -1;
-  }
+  server_fd_.reset();
   queue_.close();
   spdlog::info("TcpServer: shut down");
 }

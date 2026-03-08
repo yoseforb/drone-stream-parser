@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "blocking_queue.hpp"
+#include "unique_socket.hpp"
 
 class TcpServer {
 public:
@@ -23,7 +24,7 @@ public:
 private:
   BlockingQueue<std::vector<uint8_t>>& queue_;
   std::atomic<bool>& stop_flag_;
-  int server_fd_{-1};
+  UniqueSocket server_fd_;
 
   void recvLoop(int client_fd);
 };
