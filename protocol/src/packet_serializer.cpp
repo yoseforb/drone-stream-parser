@@ -10,6 +10,9 @@
 
 namespace {
 
+static_assert(sizeof(double) == 8, // NOLINT(readability-magic-numbers)
+              "Protocol requires IEEE 754 64-bit doubles");
+
 constexpr uint8_t HeaderByte0 = 0xAAU;
 constexpr uint8_t HeaderByte1 = 0x55U;
 constexpr std::size_t HeaderSize = 2;
