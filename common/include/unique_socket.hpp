@@ -11,7 +11,7 @@ public:
 
   explicit UniqueSocket(int raw_fd) noexcept : fd_(raw_fd) {}
 
-  ~UniqueSocket() {
+  ~UniqueSocket() noexcept {
     if (fd_ >= 0) {
       ::close(fd_);
     }
