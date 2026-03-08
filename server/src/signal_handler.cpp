@@ -4,6 +4,8 @@
 #include <csignal>
 #include <signal.h> // NOLINT(modernize-deprecated-headers) — sigaction is POSIX, not C++
 
+#include <spdlog/spdlog.h>
+
 namespace {
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
@@ -25,6 +27,10 @@ SignalHandler::SignalHandler(std::atomic<bool>& stop_flag) {
   sig_action.sa_handler = handleSignal;
   sigemptyset(&sig_action.sa_mask);
   sig_action.sa_flags = 0;
-  sigaction(SIGINT, &sig_action, nullptr);
-  sigaction(SIGTERM, &sig_action, nullptr);
+  if (sigaction(SIGINT, &sig_action, nullptr) == -1) {
+    spdlog::warn("SignalHandler: sigaction(SIGINT) failed");
+  }
+  if (sigaction(SIGTERM, &sig_action, nullptr) == -1) {
+    spdlog::warn("SignalHandler: sigaction(SIGTERM) failed");
+  }
 }
