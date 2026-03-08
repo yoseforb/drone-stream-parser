@@ -84,4 +84,30 @@ TEST(PacketSerializerTest, TotalSizeIs6PlusPayloadSize) {
   EXPECT_EQ(packet.size(), 50U);
 }
 
+TEST(PacketSerializerTest, LongitudeEncodedAsLittleEndianDouble) {
+  auto packet = PacketSerializer::serialize(makeSimpleTelemetry());
+  // longitude at offset: header(2) + length(2) + id_len(2) + id("D1"=2) +
+  // lat(8) = 16
+  ASSERT_GE(packet.size(), 24U);
+  double longitude = 0.0;
+  std::memcpy(&longitude, &packet[16], sizeof(longitude));
+  EXPECT_DOUBLE_EQ(longitude, 2.0);
+}
+
+TEST(PacketSerializerTest, AltitudeEncodedAsLittleEndianDouble) {
+  auto packet = PacketSerializer::serialize(makeSimpleTelemetry());
+  ASSERT_GE(packet.size(), 32U);
+  double altitude = 0.0;
+  std::memcpy(&altitude, &packet[24], sizeof(altitude));
+  EXPECT_DOUBLE_EQ(altitude, 3.0);
+}
+
+TEST(PacketSerializerTest, SpeedEncodedAsLittleEndianDouble) {
+  auto packet = PacketSerializer::serialize(makeSimpleTelemetry());
+  ASSERT_GE(packet.size(), 40U);
+  double speed = 0.0;
+  std::memcpy(&speed, &packet[32], sizeof(speed));
+  EXPECT_DOUBLE_EQ(speed, 4.0);
+}
+
 // NOLINTEND(readability-magic-numbers)

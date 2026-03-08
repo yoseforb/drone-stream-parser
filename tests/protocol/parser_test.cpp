@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string>
 #include <utility>
@@ -6,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include "crc16.hpp"
 #include "packet_serializer.hpp"
 #include "stream_parser.hpp"
 #include "telemetry.hpp"
@@ -192,6 +194,79 @@ TEST(StreamParserTest, GarbageThenValidThenGarbageThenValidBothValidEmitted) {
   EXPECT_EQ(results[1].drone_id, "D10");
   EXPECT_EQ(parser.getCrcFailCount(), 0U);
   EXPECT_EQ(parser.getMalformedCount(), 0U);
+}
+
+TEST(StreamParserTest, EmptyFeedDoesNothing) {
+  std::vector<Telemetry> results;
+  StreamParser parser(
+      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+
+  parser.feed(std::span<const uint8_t>{});
+
+  EXPECT_TRUE(results.empty());
+  EXPECT_EQ(parser.getCrcFailCount(), 0U);
+  EXPECT_EQ(parser.getMalformedCount(), 0U);
+}
+
+TEST(StreamParserTest, EmptyDroneIdRoundTrips) {
+  std::vector<Telemetry> results;
+  StreamParser parser(
+      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+
+  auto packet = PacketSerializer::serialize(makeTel("", 100.0, 20.0, 1000));
+  parser.feed(packet);
+
+  ASSERT_EQ(results.size(), 1U);
+  EXPECT_TRUE(results[0].drone_id.empty());
+}
+
+TEST(StreamParserTest, HeaderBytesInsidePayloadDoNotConfuseParser) {
+  std::vector<Telemetry> results;
+  StreamParser parser(
+      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+
+  const std::string TrickyId = "X\xAA\x55Y";
+  auto packet =
+      PacketSerializer::serialize(makeTel(TrickyId, 50.0, 10.0, 2000));
+  parser.feed(packet);
+
+  ASSERT_EQ(results.size(), 1U);
+  EXPECT_EQ(results[0].drone_id, TrickyId);
+  EXPECT_DOUBLE_EQ(results[0].altitude, 50.0);
+}
+
+TEST(StreamParserTest, MalformedIdLenExceedingPayloadIncrementsMalformed) {
+  std::vector<Telemetry> results;
+  StreamParser parser(
+      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+
+  // Build a valid packet, then tamper IdLen to 0xFFFF
+  auto bad_packet =
+      PacketSerializer::serialize(makeTel("D1", 100.0, 20.0, 1000));
+
+  // IdLen is at offset 4 (right after header+length)
+  const uint16_t BadIdLen = 0xFFFF;
+  std::memcpy(&bad_packet[4], &BadIdLen, sizeof(BadIdLen));
+
+  // Recompute CRC over header+length+payload (everything except last 2 bytes)
+  auto frame_span =
+      std::span<const uint8_t>(bad_packet.data(), bad_packet.size() - 2);
+  const uint16_t NewCrc = crc16(frame_span);
+  std::memcpy(&bad_packet[bad_packet.size() - 2], &NewCrc, sizeof(NewCrc));
+
+  // Append a valid packet after the tampered one
+  auto valid_packet =
+      PacketSerializer::serialize(makeTel("D2", 200.0, 30.0, 2000));
+
+  std::vector<uint8_t> data;
+  data.insert(data.end(), bad_packet.begin(), bad_packet.end());
+  data.insert(data.end(), valid_packet.begin(), valid_packet.end());
+
+  parser.feed(data);
+
+  ASSERT_EQ(results.size(), 1U);
+  EXPECT_EQ(results[0].drone_id, "D2");
+  EXPECT_EQ(parser.getMalformedCount(), 1U);
 }
 
 // NOLINTEND(readability-magic-numbers)
