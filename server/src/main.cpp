@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <exception>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -91,38 +92,41 @@ void runPipeline(TcpServer& server, Pipeline& pipeline, StreamParser& parser,
 
 } // namespace
 
+// NOLINTNEXTLINE(readability-function-size)
 auto main(int argc, char** argv) -> int {
-  uint16_t port = parsePort(argc, argv);
+  const uint16_t Port = parsePort(argc, argv);
 
-  // Domain + port adapters
-  AlertPolicy policy{};
+  const AlertPolicy Policy{};
   InMemoryDroneRepository repo{};
   ConsoleAlertNotifier notifier{};
-  ProcessTelemetry use_case{repo, notifier, policy};
-
-  // Pipeline queues and state
+  ProcessTelemetry use_case{repo, notifier, Policy};
   Pipeline pipeline{};
 
-  // Infrastructure
   std::atomic<bool> stop_flag{false};
   [[maybe_unused]] const SignalHandler SignalGuard{stop_flag};
-  TcpServer server{port, pipeline.raw_queue, stop_flag};
 
-  spdlog::info("drone_server starting on port {}. altitude_limit={:.1f}m "
-               "speed_limit={:.1f}m/s",
-               port, policy.altitude_limit, policy.speed_limit);
+  try {
+    TcpServer server{Port, pipeline.raw_queue, stop_flag};
 
-  StreamParser parser{[&pipeline](Telemetry tel) {
-    pipeline.parsed_queue.push(std::move(tel));
-  }};
+    spdlog::info("drone_server starting on port {}. altitude_limit={:.1f}m "
+                 "speed_limit={:.1f}m/s",
+                 Port, Policy.altitude_limit, Policy.speed_limit);
 
-  runPipeline(server, pipeline, parser, use_case);
+    StreamParser parser{[&pipeline](Telemetry tel) {
+      pipeline.parsed_queue.push(std::move(tel));
+    }};
 
-  spdlog::info(
-      "Shutdown complete. packets_processed={} crc_failures={} malformed={} "
-      "active_drones={}",
-      pipeline.packets_processed.load(std::memory_order_relaxed),
-      parser.getCrcFailCount(), parser.getMalformedCount(), repo.size());
+    runPipeline(server, pipeline, parser, use_case);
+
+    spdlog::info(
+        "Shutdown complete. packets_processed={} crc_failures={} malformed={} "
+        "active_drones={}",
+        pipeline.packets_processed.load(std::memory_order_relaxed),
+        parser.getCrcFailCount(), parser.getMalformedCount(), repo.size());
+  } catch (const std::runtime_error& ex) {
+    spdlog::error("{}", ex.what());
+    return EXIT_FAILURE;
+  }
 
   return 0;
 }
