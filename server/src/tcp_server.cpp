@@ -137,6 +137,24 @@ void TcpServer::recvLoop(int client_fd) {
   std::array<uint8_t, RecvBufSize> buf{};
 
   while (!stop_flag_) {
+    pollfd pfd{};
+    pfd.fd = client_fd;
+    pfd.events = POLLIN;
+
+    constexpr int PollTimeoutMs = 200;
+    const int PollRet = poll(&pfd, 1, PollTimeoutMs);
+    if (PollRet < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      spdlog::warn("TcpServer: recv poll() failed: {}",
+                   std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
+      return;
+    }
+    if (PollRet == 0) {
+      continue; // timeout — recheck stop_flag_
+    }
+
     // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
     const ssize_t BytesRead = recv(client_fd, buf.data(), buf.size(), 0);
     if (BytesRead < 0) {
