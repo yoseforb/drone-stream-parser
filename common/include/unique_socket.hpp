@@ -40,8 +40,10 @@ public:
   }
 
   void reset(int raw_fd = -1) noexcept {
-    if (fd_ >= 0) {
-      ::close(fd_);
+    if (fd_ != raw_fd) {
+      if (fd_ >= 0) {
+        ::close(fd_);
+      }
     }
     fd_ = raw_fd;
   }
