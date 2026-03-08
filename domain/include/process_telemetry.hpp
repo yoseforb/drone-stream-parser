@@ -14,8 +14,10 @@ public:
   void execute(const Telemetry& telemetry);
 
 private:
-  IDroneRepository* repository_;
-  IAlertNotifier* notifier_;
+  IDroneRepository&
+      repository_; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+  IAlertNotifier&
+      notifier_; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
   AlertPolicy policy_;
 };
 

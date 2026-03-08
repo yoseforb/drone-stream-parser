@@ -8,17 +8,17 @@
 
 ProcessTelemetry::ProcessTelemetry(IDroneRepository& repository,
                                    IAlertNotifier& notifier, AlertPolicy policy)
-    : repository_(&repository), notifier_(&notifier), policy_(policy) {}
+    : repository_(repository), notifier_(notifier), policy_(policy) {}
 
 void ProcessTelemetry::execute(const Telemetry& telemetry) {
-  auto existing = repository_->findById(telemetry.drone_id);
+  auto existing = repository_.findById(telemetry.drone_id);
   Drone drone =
       existing.has_value() ? std::move(*existing) : Drone(telemetry.drone_id);
 
   auto transitions = drone.updateFrom(telemetry, policy_);
-  repository_->save(std::move(drone));
+  repository_.save(std::move(drone));
 
   if (!transitions.empty()) {
-    notifier_->notify(telemetry.drone_id, transitions);
+    notifier_.notify(telemetry.drone_id, transitions);
   }
 }
