@@ -11,22 +11,24 @@
 #include <vector>
 
 #include "crc16.hpp"
+#include "protocol_constants.hpp"
 #include "telemetry.hpp"
 
 namespace {
 
+using protocol::CrcFieldSize;
+using protocol::DoubleFieldSize;
+using protocol::HeaderByte0;
+using protocol::HeaderByte1;
+using protocol::HeaderSize;
+using protocol::IdLenFieldSize;
+using protocol::LengthFieldSize;
+using protocol::TimestampFieldSize;
+
 static_assert(sizeof(double) == 8, // NOLINT(readability-magic-numbers)
               "Protocol requires IEEE 754 64-bit doubles");
 
-constexpr uint8_t HeaderByte0 = 0xAAU;
-constexpr uint8_t HeaderByte1 = 0x55U;
 constexpr std::size_t MaxPayload = 4096U;
-constexpr std::size_t HeaderSize = 2U;
-constexpr std::size_t LengthFieldSize = 2U;
-constexpr std::size_t CrcFieldSize = 2U;
-constexpr std::size_t DoubleFieldSize = 8U;
-constexpr std::size_t TimestampFieldSize = 8U;
-constexpr std::size_t IdLenFieldSize = 2U;
 
 // Minimum payload: IdLen(2) + 4*double(32) + timestamp(8) = 42
 constexpr std::size_t MinFixedPayloadSize =
