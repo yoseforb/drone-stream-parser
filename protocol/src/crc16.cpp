@@ -24,7 +24,7 @@ constexpr auto buildTable() noexcept -> std::array<uint16_t, TableSize> {
         crc = static_cast<uint16_t>(crc << 1U);
       }
     }
-    table[i] = crc; // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
+    table.at(i) = crc;
   }
   return table;
 }
