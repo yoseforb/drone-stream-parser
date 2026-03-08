@@ -81,6 +81,16 @@ void StreamParser::feed(std::span<const uint8_t> chunk) noexcept {
       break;
     }
   }
+
+  // Compact buffer: erase bytes before read_pos_ that will never be revisited.
+  // In HUNT_HEADER, all bytes before read_pos_ have been scanned and rejected,
+  // except when header_start_ == read_pos_ (partial 0xAA found at end).
+  if (state_ == State::HUNT_HEADER && read_pos_ > 0) {
+    buffer_.erase(buffer_.begin(),
+                  buffer_.begin() + static_cast<ptrdiff_t>(read_pos_));
+    read_pos_ = 0;
+    header_start_ = 0;
+  }
 }
 
 auto StreamParser::huntHeader() noexcept -> bool {
