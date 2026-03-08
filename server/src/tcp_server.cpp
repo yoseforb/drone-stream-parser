@@ -33,7 +33,10 @@ auto createListeningSocket(uint16_t port) -> int {
 
   int opt = 1;
   // NOLINTNEXTLINE(misc-include-cleaner)
-  setsockopt(Sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  if (setsockopt(Sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+    spdlog::warn("TcpServer: setsockopt(SO_REUSEADDR) failed: {}",
+                 std::strerror(errno)); // NOLINT(concurrency-mt-unsafe)
+  }
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
