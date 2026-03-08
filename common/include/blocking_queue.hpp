@@ -10,6 +10,11 @@
 template <typename T> class BlockingQueue {
 public:
   explicit BlockingQueue(size_t capacity) : capacity_(capacity) {}
+  BlockingQueue(const BlockingQueue&) = delete;
+  BlockingQueue& operator=(const BlockingQueue&) = delete;
+  BlockingQueue(BlockingQueue&&) = delete;
+  BlockingQueue& operator=(BlockingQueue&&) = delete;
+  ~BlockingQueue() = default;
 
   void push(T&& item) {
     {
