@@ -35,21 +35,21 @@ constexpr std::size_t MinFixedPayloadSize =
 auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint16_t {
   uint16_t value = 0;
-  std::memcpy(&value, &buf[offset], IdLenFieldSize);
+  std::memcpy(&value, &buf[offset], sizeof(value));
   return value;
 }
 
 auto readDouble(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> double {
   double value = 0.0;
-  std::memcpy(&value, &buf[offset], DoubleFieldSize);
+  std::memcpy(&value, &buf[offset], sizeof(value));
   return value;
 }
 
 auto readU64Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
     -> uint64_t {
   uint64_t value = 0;
-  std::memcpy(&value, &buf[offset], TimestampFieldSize);
+  std::memcpy(&value, &buf[offset], sizeof(value));
   return value;
 }
 
