@@ -1,6 +1,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <exception>
 #include <span>
 #include <string>
 #include <thread>
@@ -22,6 +24,8 @@
 namespace {
 
 constexpr uint16_t DefaultPort = 9000;
+constexpr int MinPort = 1;
+constexpr int MaxPort = 65535;
 constexpr size_t QueueCapacity = 256;
 
 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -30,8 +34,21 @@ auto parsePort(int argc, char** argv) -> uint16_t {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     auto arg = std::string(argv[i]);
     if (arg == "--port") {
-      // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-      return static_cast<uint16_t>(std::stoi(argv[i + 1]));
+      int port_value = 0;
+      try {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        port_value = std::stoi(argv[i + 1]);
+      } catch (const std::exception& ex) {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        spdlog::error("invalid --port value '{}': {}", argv[i + 1], ex.what());
+        std::exit(EXIT_FAILURE); // NOLINT(concurrency-mt-unsafe)
+      }
+      if (port_value < MinPort || port_value > MaxPort) {
+        spdlog::error("--port value {} out of range ({}-{})", port_value,
+                      MinPort, MaxPort);
+        std::exit(EXIT_FAILURE); // NOLINT(concurrency-mt-unsafe)
+      }
+      return static_cast<uint16_t>(port_value);
     }
   }
   return DefaultPort;
