@@ -12,27 +12,6 @@ project(
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
-# ---- Format patterns (used by auto-format and lint targets) ----
-set(
-    FORMAT_PATTERNS
-    domain/src/*.cpp domain/include/*.hpp
-    protocol/src/*.cpp protocol/include/*.hpp
-    server/src/*.cpp server/include/*.hpp
-    client/src/*.cpp client/include/*.hpp
-    common/include/*.hpp
-    tests/src/*.cpp tests/domain/*.cpp tests/protocol/*.cpp tests/common/*.cpp
-)
-
-# Expand glob patterns for auto-format and auto-tidy targets
-file(GLOB_RECURSE SOURCE_FILES
-    domain/src/*.cpp domain/include/*.hpp
-    protocol/src/*.cpp protocol/include/*.hpp
-    server/src/*.cpp server/include/*.hpp
-    client/src/*.cpp client/include/*.hpp
-    common/include/*.hpp
-    tests/src/*.cpp tests/domain/*.cpp tests/protocol/*.cpp tests/common/*.cpp
-)
-
 # ---- clang-tidy (prefer clang-tidy-cache, fall back to clang-tidy) ----
 
 option(ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
@@ -51,9 +30,6 @@ if(ENABLE_CLANG_TIDY)
     message(WARNING "ENABLE_CLANG_TIDY is ON but neither clang-tidy-cache nor clang-tidy found")
   endif()
 endif()
-
-# ---- Auto-fix with clang-tidy ----
-find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 
 # ---- Dependencies ----
 
@@ -88,26 +64,19 @@ endforeach()
 
 # ---- Targets ----
 
-# Auto-format all source files before compilation
-add_custom_target(
-    auto-format-sources ALL
-    COMMAND clang-format -i ${SOURCE_FILES}
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-    COMMENT "Auto-formatting source code..."
-)
-
-# Auto-fix with clang-tidy (after formatting)
-if(CLANG_TIDY_EXE)
+# Auto-format only git-changed .cpp/.hpp files before compilation.
+# clang-tidy runs per-file during compilation via CMAKE_CXX_CLANG_TIDY
+# (set above when ENABLE_CLANG_TIDY=ON), so no separate tidy target needed.
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+if(CLANG_FORMAT_EXE)
   add_custom_target(
-      auto-tidy-fix ALL
-      COMMAND "${CLANG_TIDY_EXE}" --fix --fix-errors --header-filter="^${PROJECT_SOURCE_DIR}/" ${SOURCE_FILES}
-      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-      COMMENT "Auto-fixing code with clang-tidy..."
-      DEPENDS auto-format-sources
+      auto-format-changed ALL
+      COMMAND "${CMAKE_COMMAND}"
+          -DPROJECT_DIR=${PROJECT_SOURCE_DIR}
+          -DCLANG_FORMAT_EXE=${CLANG_FORMAT_EXE}
+          -P ${PROJECT_SOURCE_DIR}/cmake/format-changed.cmake
+      COMMENT "Formatting changed source files"
   )
-else()
-  message(WARNING "clang-tidy not found, skipping auto-tidy-fix target")
-  add_custom_target(auto-tidy-fix ALL DEPENDS auto-format-sources)
 endif()
 
 add_subdirectory(common)
@@ -115,13 +84,6 @@ add_subdirectory(domain)
 add_subdirectory(protocol)
 add_subdirectory(server)
 add_subdirectory(client)
-
-# Make all targets depend on auto-format and auto-tidy-fix
-add_dependencies(common auto-tidy-fix)
-add_dependencies(domain auto-tidy-fix)
-add_dependencies(protocol auto-tidy-fix)
-add_dependencies(drone_server auto-tidy-fix)
-add_dependencies(drone_client auto-tidy-fix)
 
 # ---- Developer mode ----
 
