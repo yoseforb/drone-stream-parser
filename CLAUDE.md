@@ -16,27 +16,55 @@ ctest --preset=dev
 cmake --build --preset=dev -t format-check   # check only
 cmake --build --preset=dev -t format-fix     # auto-fix
 
-# Run binaries
-cmake --build --preset=dev -t run-server
-cmake --build --preset=dev -t run-client
-
 # Direct binary paths
-./build/dev/drone_server --port 9000
-./build/dev/drone_client --scenario normal --host 127.0.0.1 --port 9000
+./build/dev/server/drone_server --port 9000
+./build/dev/client/drone_client --scenario normal --host 127.0.0.1 --port 9000
 ./build/dev/test/tests
 ```
+
+## Running Server & Client
+
+```bash
+# Start server (use any free port)
+./build/dev/server/drone_server --port 9000
+
+# In another terminal, run client scenarios
+./build/dev/client/drone_client --scenario <name> --host 127.0.0.1 --port 9000
+```
+
+**Available scenarios:**
+
+| Scenario       | Description                                              |
+|----------------|----------------------------------------------------------|
+| `normal`       | 1000 valid packets across 5 drones                       |
+| `fragmented`   | 1000 packets sent as small TCP chunks                    |
+| `corrupt`      | 100 iterations: 30% garbage, 20% bad CRC, 50% valid     |
+| `stress`       | Max-rate send for 10s (~460K pkt/s)                      |
+| `alert`        | Packets above altitude/speed thresholds                  |
+| `multi-drone`  | 100 unique drones, 10 packets each                       |
+| `interleaved`  | 5 drones round-robin, 50 rounds                          |
+| `all`          | Runs all 7 scenarios above in sequence                   |
+
+Stop the server with `Ctrl+C` (SIGINT) for graceful shutdown with stats summary.
 
 ## MANDATORY: Build and Test After Every Change
 
 **After every code change, you MUST run:**
 ```bash
+# 1. Build + unit tests
 cmake --build --preset=dev && ctest --preset=dev
+
+# 2. Integration test: start server, run all client scenarios, stop server
+./build/dev/server/drone_server --port 9100 &
+sleep 1
+./build/dev/client/drone_client --scenario all --host 127.0.0.1 --port 9100
+kill -INT %1
 ```
 
 **Rules — no exceptions:**
-1. Run build + tests after EVERY code change, no matter how small.
-2. NEVER `git commit` before build + tests pass. A commit without a green build is forbidden.
-3. Do not consider a change complete until the build passes with zero warnings and all tests pass.
+1. Run build + unit tests + integration test after EVERY code change, no matter how small.
+2. NEVER `git commit` before build, unit tests, AND integration test pass. A commit without a green build is forbidden.
+3. Do not consider a change complete until the build passes with zero warnings, all unit tests pass, and the server handles all client scenarios cleanly.
 4. clang-tidy runs as part of the build — treat its diagnostics as errors.
 5. If build or tests fail, fix all issues and re-run before doing anything else.
 
