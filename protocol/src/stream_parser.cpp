@@ -34,24 +34,10 @@ constexpr std::size_t MaxPayload = 4096U;
 constexpr std::size_t MinFixedPayloadSize =
     IdLenFieldSize + (4U * DoubleFieldSize) + TimestampFieldSize;
 
-auto readU16Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
-    -> uint16_t {
-  uint16_t value = 0;
-  std::memcpy(&value, &buf[offset], sizeof(value));
-  return value;
-}
-
-auto readDouble(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
-    -> double {
-  double value = 0.0;
-  std::memcpy(&value, &buf[offset], sizeof(value));
-  return value;
-}
-
-auto readU64Le(const std::vector<uint8_t>& buf, std::size_t offset) noexcept
-    -> uint64_t {
-  uint64_t value = 0;
-  std::memcpy(&value, &buf[offset], sizeof(value));
+template <typename T>
+auto readLe(const std::vector<uint8_t>& buf, std::size_t offset) noexcept -> T {
+  T value{};
+  std::memcpy(&value, &buf[offset], sizeof(T));
   return value;
 }
 
@@ -121,7 +107,7 @@ auto StreamParser::readLength() noexcept -> bool {
   if (read_pos_ + LengthFieldSize > buffer_.size()) {
     return false;
   }
-  pending_length_ = readU16Le(buffer_, read_pos_);
+  pending_length_ = readLe<uint16_t>(buffer_, read_pos_);
   read_pos_ += LengthFieldSize;
   if (static_cast<std::size_t>(pending_length_) > MaxPayload) {
     ++malformed_count_;
@@ -145,7 +131,7 @@ auto StreamParser::readCrc() noexcept -> bool {
   if (read_pos_ + CrcFieldSize > buffer_.size()) {
     return false;
   }
-  uint16_t const ReceivedCrc = readU16Le(buffer_, read_pos_);
+  auto const ReceivedCrc = readLe<uint16_t>(buffer_, read_pos_);
   read_pos_ += CrcFieldSize;
 
   auto const CrcDataLen =
@@ -186,7 +172,7 @@ auto StreamParser::deserializePayload() const noexcept
     -> std::optional<Telemetry> {
   std::size_t pos = header_start_ + HeaderSize + LengthFieldSize;
 
-  uint16_t const IdLen = readU16Le(buffer_, pos);
+  auto const IdLen = readLe<uint16_t>(buffer_, pos);
   pos += IdLenFieldSize;
 
   if (static_cast<std::size_t>(IdLen) + MinFixedPayloadSize >
@@ -199,16 +185,16 @@ auto StreamParser::deserializePayload() const noexcept
                            static_cast<ptrdiff_t>(IdLen));
   pos += static_cast<std::size_t>(IdLen);
 
-  double const Latitude = readDouble(buffer_, pos);
+  auto const Latitude = readLe<double>(buffer_, pos);
   pos += DoubleFieldSize;
-  double const Longitude = readDouble(buffer_, pos);
+  auto const Longitude = readLe<double>(buffer_, pos);
   pos += DoubleFieldSize;
-  double const Altitude = readDouble(buffer_, pos);
+  auto const Altitude = readLe<double>(buffer_, pos);
   pos += DoubleFieldSize;
-  double const Speed = readDouble(buffer_, pos);
+  auto const Speed = readLe<double>(buffer_, pos);
   pos += DoubleFieldSize;
 
-  uint64_t const Timestamp = readU64Le(buffer_, pos);
+  auto const Timestamp = readLe<uint64_t>(buffer_, pos);
 
   return Telemetry{.drone_id = std::move(drone_id),
                    .latitude = Latitude,
