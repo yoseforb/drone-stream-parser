@@ -140,7 +140,7 @@ integration-test tool for the infrastructure layer.
   - Handles packets fragmented across multiple TCP reads.
   - Handles multiple packets arriving in a single buffer.
   - Handles random corrupted bytes and loss of synchronization.
-  - Counts and logs CRC failures and malformed packets.
+  - Counts and logs CRC failures.
   - Emits valid `Telemetry` structs to Q2.
 
 ### 3. Drone State Management

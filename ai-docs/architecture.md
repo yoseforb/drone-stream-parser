@@ -255,15 +255,14 @@ HUNT_HEADER → READ_LENGTH → READ_PAYLOAD → READ_CRC → COMPLETE_FRAME →
 4. **READ_CRC** — read 2 bytes, validate CRC over [header + length + payload]
    - Match → transition to COMPLETE_FRAME
    - Mismatch → increment crc_fail_count, log, resync → HUNT_HEADER
-5. **COMPLETE_FRAME** — deserialize payload into Telemetry, compact buffer, reset state, invoke callback
-   - Success → HUNT_HEADER
-   - Deserialization failure → resync → HUNT_HEADER
+5. **COMPLETE_FRAME** — extract raw payload span, invoke callback with payload bytes, compact buffer, reset state
+   - The callback is responsible for deserialization (via `PacketDeserializer`)
 
-**Resync strategy:** On CRC failure, invalid length, or deserialization failure, rewind buffer read position to one byte after the 0xAA that started this packet attempt. The "header" we found may have been random data. Re-enter HUNT_HEADER to find the next real sync point. O(n), minimal data loss.
+**Resync strategy:** On CRC failure or invalid length, rewind buffer read position to one byte after the 0xAA that started this packet attempt. The "header" we found may have been random data. Re-enter HUNT_HEADER to find the next real sync point. O(n), minimal data loss.
 
 **MAX_PAYLOAD guard (4096):** Prevents a malformed length field from causing unbounded memory allocation.
 
-**Parsing stats:** The parser tracks `crc_fail_count` and `malformed_count` internally. Accessible via getter methods. Logged by the composition root at shutdown. Not a domain concern.
+**Parsing stats:** The parser tracks `crc_fail_count` internally. Accessible via getter method. Logged by the composition root at shutdown. Not a domain concern. Deserialization errors are handled by the caller (via `PacketDeserializer`).
 
 ---
 

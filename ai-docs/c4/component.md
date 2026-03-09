@@ -238,10 +238,10 @@ at any position.
 - **READ_CRC:** Validates CRC16 over `HEADER + LENGTH + PAYLOAD`. On mismatch: logs the
   failure, increments a CRC failure counter, resyncs back to HUNT_HEADER at
   header_start_ + 1. On success: transitions to COMPLETE_FRAME.
-- **COMPLETE_FRAME:** Deserializes the payload into a `Telemetry` struct, compacts the
-  buffer, resets parser state, and invokes the callback. On deserialization failure:
-  resyncs back to HUNT_HEADER at header_start_ + 1.
-- Tracks `crc_fail_count` and `malformed_count` internally. Accessible via getter methods.
+- **COMPLETE_FRAME:** Extracts raw payload span, invokes the callback with payload bytes,
+  compacts the buffer, and resets parser state. Deserialization is the caller's
+  responsibility (via `PacketDeserializer`).
+- Tracks `crc_fail_count` internally. Accessible via getter method.
   Logged by the composition root at shutdown.
 - Marked `noexcept` on `feed()` — parsing is pure logic that cannot fail.
 
@@ -260,12 +260,11 @@ Offset  Size    Field
 ```
 feed(std::span<const uint8_t> bytes) -> void    noexcept
 
-// Callback set at construction or injection:
-onTelemetry: std::function<void(Telemetry)>
+// Callback set at construction:
+onPayload: std::function<void(std::span<const uint8_t>)>
 
 // Diagnostics:
 crc_failure_count() -> uint64_t    noexcept
-malformed_count() -> uint64_t      noexcept
 ```
 
 **Dependencies:** Telemetry (Domain), CRC16 (Protocol).
@@ -677,7 +676,8 @@ C4Component
         }
 
         Container_Boundary(protocol, "Protocol Boundary") {
-            Component(streamParser, "StreamParser", "State Machine", "HUNT_HEADER->READ_LENGTH->READ_PAYLOAD->READ_CRC->COMPLETE_FRAME; MAX_PAYLOAD=4096 guard; resync on CRC/deser failure; emits Telemetry via callback")
+            Component(streamParser, "StreamParser", "State Machine", "HUNT_HEADER->READ_LENGTH->READ_PAYLOAD->READ_CRC->COMPLETE_FRAME; MAX_PAYLOAD=4096 guard; resync on CRC failure; emits raw payload bytes via callback")
+            Component(packetDeserializer, "PacketDeserializer", "Deserializer", "Raw payload bytes -> optional<Telemetry>; noexcept")
             Component(packetSerializer, "PacketSerializer", "Serializer", "Telemetry -> framed wire bytes with CRC16")
             Component(crc16, "CRC16", "Pure Function", "CRC16 over byte span; noexcept")
         }

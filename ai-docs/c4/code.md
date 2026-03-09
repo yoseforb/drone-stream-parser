@@ -282,7 +282,7 @@ HUNT_HEADER       → scan byte-by-byte for 0xAA then 0x55
 READ_LENGTH       → collect 2-byte length field
 READ_PAYLOAD      → collect N bytes of payload data
 READ_CRC          → collect 2-byte CRC field and validate checksum
-COMPLETE_FRAME    → deserialize payload, compact buffer, invoke callback
+COMPLETE_FRAME    → extract payload span, invoke callback with raw bytes, compact buffer
 ```
 
 **Constants**:
@@ -290,7 +290,7 @@ COMPLETE_FRAME    → deserialize payload, compact buffer, invoke callback
 
 **Constructor**:
 ```cpp
-StreamParser(std::function<void(Telemetry)> on_packet_callback)
+StreamParser(std::function<void(std::span<const uint8_t>)> on_packet_callback)
 ```
 
 **Method**:
@@ -325,12 +325,11 @@ void feed(std::span<const uint8_t> chunk) noexcept
      - Return to `HUNT_HEADER`
 
 5. **COMPLETE_FRAME**:
-   - Deserialize PAYLOAD → Telemetry
+   - Extract raw payload span from buffer
+   - Invoke callback with payload bytes (caller deserializes via `PacketDeserializer`)
    - Compact the accumulation buffer (remove consumed bytes)
    - Reset parser state
-   - Invoke callback with Telemetry
-   - **If deserialization fails**: resync from byte after last header position, return to `HUNT_HEADER`
-   - **If successful**: return to `HUNT_HEADER`
+   - Return to `HUNT_HEADER`
 
 **Responsibility**:
 - Implement resilient parsing with automatic recovery
@@ -748,7 +747,7 @@ classDiagram
         -length_buffer: vector~uint8_t~
         -payload_buffer: vector~uint8_t~
         -crc_buffer: vector~uint8_t~
-        -callback: function~void(Telemetry)~
+        -callback: function~void(span~uint8_t~)~
         -last_header_pos: size_t
         +feed(chunk: span~uint8_t~) void
     }
@@ -802,8 +801,7 @@ stateDiagram-v2
     READ_CRC --> COMPLETE_FRAME: CRC match
     READ_CRC --> HUNT_HEADER: CRC mismatch (resync)
 
-    COMPLETE_FRAME --> HUNT_HEADER: deserialize + callback + reset
-    COMPLETE_FRAME --> HUNT_HEADER: deserialization failure (resync)
+    COMPLETE_FRAME --> HUNT_HEADER: callback + compact + reset
 ```
 
 ---
@@ -964,7 +962,6 @@ TEST(StreamParserTest, RejectsOversizedPayloadLength) {
 
     parser.feed(stream);
     EXPECT_EQ(results.size(), 1); // only the valid packet parsed
-    EXPECT_GE(parser.malformed_count(), 1); // oversized rejected
 }
 ```
 

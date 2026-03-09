@@ -21,16 +21,15 @@ HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> COMPLETE_FRAME -> HUNT
 4. **READ_CRC** — read 2 bytes, compute CRC over header + length + payload.
    - Match: advance to COMPLETE_FRAME.
    - Mismatch: increment crc_fail_count, resync.
-5. **COMPLETE_FRAME** — deserialize the payload into a Telemetry struct, compact the buffer, reset state, and invoke the callback. Return to HUNT_HEADER.
-   - Deserialization failure: resync.
+5. **COMPLETE_FRAME** — extract raw payload span, invoke callback with payload bytes, compact the buffer, and reset state. Return to HUNT_HEADER. Deserialization is the caller's responsibility (via `PacketDeserializer`).
 
-**Resync strategy:** On CRC failure, invalid length, or deserialization failure in COMPLETE_FRAME, rewind the buffer read position to one byte after the 0xAA that started the current packet attempt. The "header" that was found may have been random data matching 0xAA55. Re-enter HUNT_HEADER to scan for the next real sync point. This is O(n) and minimizes data loss.
+**Resync strategy:** On CRC failure or invalid length, rewind the buffer read position to one byte after the 0xAA that started the current packet attempt. The "header" that was found may have been random data matching 0xAA55. Re-enter HUNT_HEADER to scan for the next real sync point. This is O(n) and minimizes data loss.
 
 **MAX_PAYLOAD guard (4096):** Prevents a malformed length field from causing unbounded memory allocation.
 
 **Internal accumulation buffer:** The StreamParser maintains an internal `std::vector<uint8_t>` accumulation buffer. When `feed()` is called, incoming bytes are appended to this buffer. The state machine operates on the buffer contents, tracking a read cursor. On successful packet parse, consumed bytes are erased from the front of the buffer. On resync (CRC failure or invalid length), the read cursor rewinds within this buffer to one byte after the `0xAA` that started the failed attempt, and parsing resumes from there. This buffer is essential — without it, rewind-based resync would be impossible since raw bytes from previous `feed()` calls would already be gone.
 
-**Parser stats:** The parser tracks `crc_fail_count` and `malformed_count` internally via getter methods. These are logged by the composition root at shutdown. Stats are not a domain concern — they are protocol-level diagnostics.
+**Parser stats:** The parser tracks `crc_fail_count` internally via a getter method. Logged by the composition root at shutdown. Stats are not a domain concern — they are protocol-level diagnostics. Deserialization errors are handled by the caller.
 
 ## Alternatives Considered
 
@@ -44,7 +43,7 @@ HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> COMPLETE_FRAME -> HUNT
 
 - **Positive:** The state machine handles all edge cases: fragmented delivery, mid-stream corruption, garbage bytes, and consecutive bad packets.
 - **Positive:** Rewind resync minimizes data loss — at most one valid packet could be missed if its header bytes happened to overlap with the failed packet's data.
-- **Positive:** `feed()` is noexcept — it processes bytes and emits Telemetry via callback, never fails.
+- **Positive:** `feed()` is noexcept — it processes bytes and emits raw payload spans via callback, never fails.
 - **Positive:** MAX_PAYLOAD guard prevents resource exhaustion from malformed data.
 - **Negative:** Rewind resync re-processes bytes, which is slightly less efficient than skip-forward. For packet sizes under 4KB, this is negligible.
 - **Negative:** The callback runs inside the `noexcept` boundary of `feed()`. A throwing callback triggers `std::terminate()`. The callback contract (must not throw, may block) must be documented in the StreamParser interface.
