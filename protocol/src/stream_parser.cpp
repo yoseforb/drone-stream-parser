@@ -64,6 +64,10 @@ void StreamParser::feed(std::span<const uint8_t> chunk) noexcept {
     case State::READ_CRC:
       progress = readCrc();
       break;
+    case State::COMPLETE_FRAME:
+      completeFrame();
+      progress = true;
+      break;
     }
     if (!progress) {
       break;
@@ -145,11 +149,16 @@ auto StreamParser::readCrc() noexcept -> bool {
     return true;
   }
 
+  state_ = State::COMPLETE_FRAME;
+  return true;
+}
+
+void StreamParser::completeFrame() noexcept {
   auto tel = deserializePayload();
   if (!tel.has_value()) {
     ++malformed_count_;
     resync();
-    return true;
+    return;
   }
 
   buffer_.erase(buffer_.begin(),
@@ -160,7 +169,6 @@ auto StreamParser::readCrc() noexcept -> bool {
   state_ = State::HUNT_HEADER;
 
   on_packet_(std::move(*tel));
-  return true;
 }
 
 void StreamParser::resync() noexcept {

@@ -34,12 +34,14 @@ private:
     READ_LENGTH,
     READ_PAYLOAD,
     READ_CRC,
+    COMPLETE_FRAME,
   };
 
   auto huntHeader() noexcept -> bool;
   auto readLength() noexcept -> bool;
   auto readPayload() noexcept -> bool;
   auto readCrc() noexcept -> bool;
+  void completeFrame() noexcept;
   void resync() noexcept;
   [[nodiscard]] auto deserializePayload() const noexcept
       -> std::optional<Telemetry>;
