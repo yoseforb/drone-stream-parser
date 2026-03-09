@@ -16,12 +16,12 @@
 #include "blocking_queue.hpp"
 #include "console_alert_notifier.hpp"
 #include "in_memory_drone_repo.hpp"
-#include "packet_deserializer.hpp"
 #include "process_telemetry.hpp"
 #include "signal_handler.hpp"
 #include "stream_parser.hpp"
 #include "tcp_server.hpp"
 #include "telemetry.hpp"
+#include "telemetry_parser.hpp"
 
 namespace {
 
@@ -65,8 +65,15 @@ struct Pipeline {
 };
 
 void runParseStage(Pipeline& pipeline, StreamParser& parser) {
+  uint64_t last_logged = 0;
   while (auto chunk = pipeline.raw_queue.pop()) {
     parser.feed(std::span<const uint8_t>{chunk->data(), chunk->size()});
+    uint64_t count = pipeline.packets_parsed.load(std::memory_order_relaxed);
+    if (count / LogInterval > last_logged / LogInterval) {
+      spdlog::info("[parse] packets_parsed={} crc_failures={}", count,
+                   parser.getCrcFailCount());
+      last_logged = count;
+    }
   }
   pipeline.parsed_queue.close();
 }
@@ -122,19 +129,10 @@ auto main(int argc, char** argv) -> int {
                  "speed_limit={:.1f}m/s",
                  Port, Policy.altitude_limit, Policy.speed_limit);
 
-    StreamParser parser{[&pipeline, &parser](std::span<const uint8_t> payload) {
-      auto tel = PacketDeserializer::deserialize(payload);
-      if (!tel.has_value()) {
-        return;
-      }
-      pipeline.parsed_queue.push(std::move(*tel));
-      uint64_t count =
-          pipeline.packets_parsed.fetch_add(1, std::memory_order_relaxed) + 1;
-      if (count % LogInterval == 0) {
-        spdlog::info("[parse] packets_parsed={} crc_failures={}", count,
-                     parser.getCrcFailCount());
-      }
-    }};
+    auto parser = makeTelemetryParser([&pipeline](Telemetry tel) {
+      pipeline.parsed_queue.push(std::move(tel));
+      pipeline.packets_parsed.fetch_add(1, std::memory_order_relaxed);
+    });
 
     runPipeline(server, pipeline, parser, use_case, repo);
 
