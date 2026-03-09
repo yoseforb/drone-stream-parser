@@ -28,21 +28,9 @@ constexpr std::size_t NumDoubleFields = 4;
 constexpr std::size_t FixedPayloadOverhead =
     IdLenFieldSize + (NumDoubleFields * DoubleFieldSize) + TimestampFieldSize;
 
-void appendU16Le(std::vector<uint8_t>& buf, uint16_t value) {
-  std::array<uint8_t, LengthFieldSize> bytes{};
-  std::memcpy(bytes.data(), &value, sizeof(value));
-  buf.insert(buf.end(), bytes.begin(), bytes.end());
-}
-
-void appendDouble(std::vector<uint8_t>& buf, double value) {
-  std::array<uint8_t, DoubleFieldSize> bytes{};
-  std::memcpy(bytes.data(), &value, sizeof(value));
-  buf.insert(buf.end(), bytes.begin(), bytes.end());
-}
-
-void appendU64Le(std::vector<uint8_t>& buf, uint64_t value) {
-  std::array<uint8_t, TimestampFieldSize> bytes{};
-  std::memcpy(bytes.data(), &value, sizeof(value));
+template <typename T> void appendLe(std::vector<uint8_t>& buf, T value) {
+  std::array<uint8_t, sizeof(T)> bytes{};
+  std::memcpy(bytes.data(), &value, sizeof(T));
   buf.insert(buf.end(), bytes.begin(), bytes.end());
 }
 
@@ -62,26 +50,26 @@ std::vector<uint8_t> PacketSerializer::serialize(const Telemetry& tel) {
   packet.push_back(HeaderByte1);
 
   // Length (payload size as uint16_t LE)
-  appendU16Le(packet, static_cast<uint16_t>(PayloadSize));
+  appendLe(packet, static_cast<uint16_t>(PayloadSize));
 
   // Payload: drone_id length prefix + drone_id bytes
-  appendU16Le(packet, static_cast<uint16_t>(tel.drone_id.size()));
+  appendLe(packet, static_cast<uint16_t>(tel.drone_id.size()));
   for (char const Chr : tel.drone_id) {
     packet.push_back(static_cast<uint8_t>(Chr));
   }
 
   // Payload: doubles
-  appendDouble(packet, tel.latitude);
-  appendDouble(packet, tel.longitude);
-  appendDouble(packet, tel.altitude);
-  appendDouble(packet, tel.speed);
+  appendLe(packet, tel.latitude);
+  appendLe(packet, tel.longitude);
+  appendLe(packet, tel.altitude);
+  appendLe(packet, tel.speed);
 
   // Payload: timestamp
-  appendU64Le(packet, tel.timestamp);
+  appendLe(packet, tel.timestamp);
 
   // CRC over header + length + payload
   auto const Checksum = crc16(packet);
-  appendU16Le(packet, Checksum);
+  appendLe(packet, Checksum);
 
   return packet;
 }
