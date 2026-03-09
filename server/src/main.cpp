@@ -16,6 +16,7 @@
 #include "blocking_queue.hpp"
 #include "console_alert_notifier.hpp"
 #include "in_memory_drone_repo.hpp"
+#include "packet_deserializer.hpp"
 #include "process_telemetry.hpp"
 #include "signal_handler.hpp"
 #include "stream_parser.hpp"
@@ -121,25 +122,27 @@ auto main(int argc, char** argv) -> int {
                  "speed_limit={:.1f}m/s",
                  Port, Policy.altitude_limit, Policy.speed_limit);
 
-    StreamParser parser{[&pipeline, &parser](Telemetry tel) {
-      pipeline.parsed_queue.push(std::move(tel));
+    StreamParser parser{[&pipeline, &parser](std::span<const uint8_t> payload) {
+      auto tel = PacketDeserializer::deserialize(payload);
+      if (!tel.has_value()) {
+        return;
+      }
+      pipeline.parsed_queue.push(std::move(*tel));
       uint64_t count =
           pipeline.packets_parsed.fetch_add(1, std::memory_order_relaxed) + 1;
       if (count % LogInterval == 0) {
-        spdlog::info("[parse] packets_parsed={} crc_failures={} malformed={}",
-                     count, parser.getCrcFailCount(),
-                     parser.getMalformedCount());
+        spdlog::info("[parse] packets_parsed={} crc_failures={}", count,
+                     parser.getCrcFailCount());
       }
     }};
 
     runPipeline(server, pipeline, parser, use_case, repo);
 
     spdlog::info("Shutdown complete. packets_parsed={} packets_processed={} "
-                 "crc_failures={} malformed={} active_drones={}",
+                 "crc_failures={} active_drones={}",
                  pipeline.packets_parsed.load(std::memory_order_relaxed),
                  pipeline.packets_processed.load(std::memory_order_relaxed),
-                 parser.getCrcFailCount(), parser.getMalformedCount(),
-                 repo.size());
+                 parser.getCrcFailCount(), repo.size());
   } catch (const std::runtime_error& ex) {
     spdlog::error("{}", ex.what());
     return EXIT_FAILURE;

@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "crc16.hpp"
+#include "packet_deserializer.hpp"
 #include "packet_serializer.hpp"
 #include "stream_parser.hpp"
 #include "telemetry.hpp"
@@ -26,12 +27,21 @@ auto makeTel(const std::string& id, double alt, double speed,
           .timestamp = timestamp};
 }
 
+/// Helper: create a parser that deserializes payloads into a results vector.
+auto makeParser(std::vector<Telemetry>& results) -> StreamParser {
+  return StreamParser{[&](std::span<const uint8_t> payload) {
+    auto tel = PacketDeserializer::deserialize(payload);
+    if (tel.has_value()) {
+      results.push_back(std::move(*tel));
+    }
+  }};
+}
+
 } // namespace
 
 TEST(StreamParserTest, SingleValidPacketCallsCallbackOnce) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto packet = PacketSerializer::serialize(makeTel("D1", 100.0, 20.0, 1000));
   parser.feed(packet);
@@ -45,8 +55,7 @@ TEST(StreamParserTest, SingleValidPacketCallsCallbackOnce) {
 
 TEST(StreamParserTest, PacketSplitAcrossTwoFeedCallsCallsCallbackOnce) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto packet = PacketSerializer::serialize(makeTel("D2", 50.0, 10.0, 2000));
   auto full = std::span<const uint8_t>(packet);
@@ -62,8 +71,7 @@ TEST(StreamParserTest, PacketSplitAcrossTwoFeedCallsCallsCallbackOnce) {
 
 TEST(StreamParserTest, PacketFedOneByteAtATimeCallsCallbackOnce) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto packet = PacketSerializer::serialize(makeTel("D3", 0.0, 0.0, 3000));
   for (unsigned char& byte : packet) {
@@ -76,8 +84,7 @@ TEST(StreamParserTest, PacketFedOneByteAtATimeCallsCallbackOnce) {
 
 TEST(StreamParserTest, TwoPacketsInOneFeedCallsCallbackTwice) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto pkt1 = PacketSerializer::serialize(makeTel("D4", 10.0, 5.0, 4000));
   auto pkt2 = PacketSerializer::serialize(makeTel("D5", 20.0, 6.0, 5000));
@@ -95,8 +102,7 @@ TEST(StreamParserTest, TwoPacketsInOneFeedCallsCallbackTwice) {
 
 TEST(StreamParserTest, GarbageBytesBeforeValidPacketParserResyncs) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto packet = PacketSerializer::serialize(makeTel("D6", 30.0, 7.0, 6000));
 
@@ -108,13 +114,11 @@ TEST(StreamParserTest, GarbageBytesBeforeValidPacketParserResyncs) {
   ASSERT_EQ(results.size(), 1U);
   EXPECT_EQ(results[0].drone_id, "D6");
   EXPECT_EQ(parser.getCrcFailCount(), 0U);
-  EXPECT_EQ(parser.getMalformedCount(), 0U);
 }
 
 TEST(StreamParserTest, PacketWithBadCrcCallbackNotCalled) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto packet = PacketSerializer::serialize(makeTel("D7", 40.0, 8.0, 7000));
   packet[packet.size() - 1] ^= 0xFF;
@@ -127,10 +131,9 @@ TEST(StreamParserTest, PacketWithBadCrcCallbackNotCalled) {
 }
 
 TEST(StreamParserTest,
-     OversizedLengthPacketCallbackNotCalledAndMalformedIncremented) {
+     OversizedLengthPacketCallbackNotCalledAndResyncsToValid) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   // Length=5000 (0x1388) exceeds MAX_PAYLOAD=4096
   std::vector<uint8_t> bad_packet = {0xAA, 0x55, 0x88, 0x13};
@@ -145,14 +148,12 @@ TEST(StreamParserTest,
 
   ASSERT_EQ(results.size(), 1U);
   EXPECT_EQ(results[0].drone_id, "D8");
-  EXPECT_EQ(parser.getMalformedCount(), 1U);
   EXPECT_EQ(parser.getCrcFailCount(), 0U);
 }
 
 TEST(StreamParserTest, BadCrcPacketFollowedByValidPacketOnlyValidEmitted) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto pkt1 = PacketSerializer::serialize(makeTel("D8a", 60.0, 10.0, 8100));
   pkt1[pkt1.size() - 1] ^= 0xFF;
@@ -173,8 +174,7 @@ TEST(StreamParserTest, BadCrcPacketFollowedByValidPacketOnlyValidEmitted) {
 
 TEST(StreamParserTest, GarbageThenValidThenGarbageThenValidBothValidEmitted) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   std::vector<uint8_t> garbage1 = {0x00, 0xFF, 0xBB};
   auto pkt1 = PacketSerializer::serialize(makeTel("D9", 80.0, 12.0, 9000));
@@ -193,25 +193,21 @@ TEST(StreamParserTest, GarbageThenValidThenGarbageThenValidBothValidEmitted) {
   EXPECT_EQ(results[0].drone_id, "D9");
   EXPECT_EQ(results[1].drone_id, "D10");
   EXPECT_EQ(parser.getCrcFailCount(), 0U);
-  EXPECT_EQ(parser.getMalformedCount(), 0U);
 }
 
 TEST(StreamParserTest, EmptyFeedDoesNothing) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   parser.feed(std::span<const uint8_t>{});
 
   EXPECT_TRUE(results.empty());
   EXPECT_EQ(parser.getCrcFailCount(), 0U);
-  EXPECT_EQ(parser.getMalformedCount(), 0U);
 }
 
 TEST(StreamParserTest, EmptyDroneIdRoundTrips) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   auto packet = PacketSerializer::serialize(makeTel("", 100.0, 20.0, 1000));
   parser.feed(packet);
@@ -222,8 +218,7 @@ TEST(StreamParserTest, EmptyDroneIdRoundTrips) {
 
 TEST(StreamParserTest, HeaderBytesInsidePayloadDoNotConfuseParser) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   const std::string TrickyId = "X\xAA\x55Y";
   auto packet =
@@ -235,10 +230,9 @@ TEST(StreamParserTest, HeaderBytesInsidePayloadDoNotConfuseParser) {
   EXPECT_DOUBLE_EQ(results[0].altitude, 50.0);
 }
 
-TEST(StreamParserTest, MalformedIdLenExceedingPayloadIncrementsMalformed) {
+TEST(StreamParserTest, MalformedIdLenExceedingPayloadIsHandledByDeserializer) {
   std::vector<Telemetry> results;
-  StreamParser parser(
-      [&](Telemetry tel) { results.push_back(std::move(tel)); });
+  auto parser = makeParser(results);
 
   // Build a valid packet, then tamper IdLen to 0xFFFF
   auto bad_packet =
@@ -264,9 +258,10 @@ TEST(StreamParserTest, MalformedIdLenExceedingPayloadIncrementsMalformed) {
 
   parser.feed(data);
 
+  // Bad packet's payload passes CRC but deserialization fails (IdLen > payload)
+  // The makeParser helper silently drops it; valid packet still arrives
   ASSERT_EQ(results.size(), 1U);
   EXPECT_EQ(results[0].drone_id, "D2");
-  EXPECT_EQ(parser.getMalformedCount(), 1U);
 }
 
 // NOLINTEND(readability-magic-numbers)

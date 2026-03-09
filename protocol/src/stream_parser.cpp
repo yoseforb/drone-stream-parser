@@ -4,35 +4,22 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <optional>
 #include <span>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "crc16.hpp"
 #include "protocol_constants.hpp"
-#include "telemetry.hpp"
 
 namespace {
 
 using protocol::CrcFieldSize;
-using protocol::DoubleFieldSize;
 using protocol::HeaderByte0;
 using protocol::HeaderByte1;
 using protocol::HeaderSize;
-using protocol::IdLenFieldSize;
 using protocol::LengthFieldSize;
-using protocol::TimestampFieldSize;
-
-static_assert(sizeof(double) == 8, // NOLINT(readability-magic-numbers)
-              "Protocol requires IEEE 754 64-bit doubles");
 
 constexpr std::size_t MaxPayload = 4096U;
-
-// Minimum payload: IdLen(2) + 4*double(32) + timestamp(8) = 42
-constexpr std::size_t MinFixedPayloadSize =
-    IdLenFieldSize + (4U * DoubleFieldSize) + TimestampFieldSize;
 
 template <typename T>
 auto readLe(const std::vector<uint8_t>& buf, std::size_t offset) noexcept -> T {
@@ -43,7 +30,8 @@ auto readLe(const std::vector<uint8_t>& buf, std::size_t offset) noexcept -> T {
 
 } // namespace
 
-StreamParser::StreamParser(std::function<void(Telemetry)> on_packet)
+StreamParser::StreamParser(
+    std::function<void(std::span<const uint8_t>)> on_packet)
     : on_packet_(std::move(on_packet)) {}
 
 void StreamParser::feed(std::span<const uint8_t> chunk) noexcept {
@@ -114,7 +102,6 @@ auto StreamParser::readLength() noexcept -> bool {
   pending_length_ = readLe<uint16_t>(buffer_, read_pos_);
   read_pos_ += LengthFieldSize;
   if (static_cast<std::size_t>(pending_length_) > MaxPayload) {
-    ++malformed_count_;
     resync();
     return true;
   }
@@ -154,12 +141,12 @@ auto StreamParser::readCrc() noexcept -> bool {
 }
 
 void StreamParser::completeFrame() noexcept {
-  auto tel = deserializePayload();
-  if (!tel.has_value()) {
-    ++malformed_count_;
-    resync();
-    return;
-  }
+  auto const PayloadStart = header_start_ + HeaderSize + LengthFieldSize;
+  auto const PayloadLen = static_cast<std::size_t>(pending_length_);
+  auto payload =
+      std::span<const uint8_t>(buffer_).subspan(PayloadStart, PayloadLen);
+
+  on_packet_(payload);
 
   buffer_.erase(buffer_.begin(),
                 buffer_.begin() + static_cast<ptrdiff_t>(read_pos_));
@@ -167,8 +154,6 @@ void StreamParser::completeFrame() noexcept {
   header_start_ = 0;
   pending_length_ = 0;
   state_ = State::HUNT_HEADER;
-
-  on_packet_(std::move(*tel));
 }
 
 void StreamParser::resync() noexcept {
@@ -176,46 +161,6 @@ void StreamParser::resync() noexcept {
   state_ = State::HUNT_HEADER;
 }
 
-auto StreamParser::deserializePayload() const noexcept
-    -> std::optional<Telemetry> {
-  std::size_t pos = header_start_ + HeaderSize + LengthFieldSize;
-
-  auto const IdLen = readLe<uint16_t>(buffer_, pos);
-  pos += IdLenFieldSize;
-
-  if (static_cast<std::size_t>(IdLen) + MinFixedPayloadSize >
-      static_cast<std::size_t>(pending_length_)) {
-    return std::nullopt;
-  }
-
-  std::string drone_id(buffer_.begin() + static_cast<ptrdiff_t>(pos),
-                       buffer_.begin() + static_cast<ptrdiff_t>(pos) +
-                           static_cast<ptrdiff_t>(IdLen));
-  pos += static_cast<std::size_t>(IdLen);
-
-  auto const Latitude = readLe<double>(buffer_, pos);
-  pos += DoubleFieldSize;
-  auto const Longitude = readLe<double>(buffer_, pos);
-  pos += DoubleFieldSize;
-  auto const Altitude = readLe<double>(buffer_, pos);
-  pos += DoubleFieldSize;
-  auto const Speed = readLe<double>(buffer_, pos);
-  pos += DoubleFieldSize;
-
-  auto const Timestamp = readLe<uint64_t>(buffer_, pos);
-
-  return Telemetry{.drone_id = std::move(drone_id),
-                   .latitude = Latitude,
-                   .longitude = Longitude,
-                   .altitude = Altitude,
-                   .speed = Speed,
-                   .timestamp = Timestamp};
-}
-
 uint64_t StreamParser::getCrcFailCount() const noexcept {
   return crc_fail_count_;
-}
-
-uint64_t StreamParser::getMalformedCount() const noexcept {
-  return malformed_count_;
 }

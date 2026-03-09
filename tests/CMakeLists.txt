@@ -5,6 +5,7 @@ add_executable(tests
   domain/process_telemetry_test.cpp
   protocol/crc16_test.cpp
   protocol/serializer_test.cpp
+  protocol/deserializer_test.cpp
   protocol/parser_test.cpp
   common/blocking_queue_test.cpp
   client/packet_builder_test.cpp
