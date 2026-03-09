@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-05
 **Status:** Accepted
-**Decisions:** #26 (4-state machine, rewind resync), #27 (parser stats internal)
+**Decisions:** #26 (5-state machine, rewind resync), #27 (parser stats internal)
 
 ## Context
 
@@ -10,19 +10,21 @@ The parser must handle fragmented TCP delivers (packets split across recv() call
 
 ## Decision
 
-**4-state machine:**
+**5-state machine:**
 ```
-HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> HUNT_HEADER
+HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> COMPLETE_FRAME -> HUNT_HEADER
 ```
 
 1. **HUNT_HEADER** — scan byte-by-byte for 0xAA then 0x55.
 2. **READ_LENGTH** — read 2 bytes into uint16_t. If > MAX_PAYLOAD (4096): resync.
 3. **READ_PAYLOAD** — buffer exactly `length` bytes.
 4. **READ_CRC** — read 2 bytes, compute CRC over header + length + payload.
-   - Match: deserialize Telemetry, emit via callback, return to HUNT_HEADER.
+   - Match: advance to COMPLETE_FRAME.
    - Mismatch: increment crc_fail_count, resync.
+5. **COMPLETE_FRAME** — deserialize the payload into a Telemetry struct, compact the buffer, reset state, and invoke the callback. Return to HUNT_HEADER.
+   - Deserialization failure: resync.
 
-**Resync strategy:** On CRC failure or invalid length, rewind the buffer read position to one byte after the 0xAA that started the current packet attempt. The "header" that was found may have been random data matching 0xAA55. Re-enter HUNT_HEADER to scan for the next real sync point. This is O(n) and minimizes data loss.
+**Resync strategy:** On CRC failure, invalid length, or deserialization failure in COMPLETE_FRAME, rewind the buffer read position to one byte after the 0xAA that started the current packet attempt. The "header" that was found may have been random data matching 0xAA55. Re-enter HUNT_HEADER to scan for the next real sync point. This is O(n) and minimizes data loss.
 
 **MAX_PAYLOAD guard (4096):** Prevents a malformed length field from causing unbounded memory allocation.
 
@@ -33,7 +35,7 @@ HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> HUNT_HEADER
 ## Alternatives Considered
 
 - **Skip-forward resync (advance past the failed packet)** — rejected. If the "header" was actually mid-stream data, skipping forward could miss a real packet that starts within the failed region. Rewind-to-header+1 re-examines all bytes.
-- **Separate resync state** — rejected. Resync is just "go back to HUNT_HEADER with adjusted read position." Adding a state for it would complicate the state machine without adding clarity.
+- **Separate resync state** — rejected. Resync is just "go back to HUNT_HEADER with adjusted read position." Adding a dedicated resync state would complicate the state machine without adding clarity.
 - **Parser stats as a separate observer/listener** — rejected. Two counters do not justify an observer pattern. Getters on the parser are simple and sufficient.
 - **Expose stats via domain events** — rejected. CRC failure counts are protocol diagnostics, not domain events. They should not flow through the domain boundary.
 - **No MAX_PAYLOAD guard** — rejected. A malformed length of 0xFFFF would attempt to allocate 65KB, and repeated corruption could exhaust memory. The guard provides a safety bound.

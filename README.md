@@ -30,17 +30,17 @@ Queues are bounded with blocking back-pressure. When downstream is slow, upstrea
 
 ### State Machine Parser
 
-The `StreamParser` implements a 4-state machine for stream protocol parsing:
+The `StreamParser` implements a 5-state machine for stream protocol parsing:
 
 ```
-HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> (emit packet) -> HUNT_HEADER
-     ^              |                              |
-     |              | length > MAX_PAYLOAD          | CRC mismatch
-     +--------------+------------------------------+
-                 resync: rewind to header_start + 1
+HUNT_HEADER -> READ_LENGTH -> READ_PAYLOAD -> READ_CRC -> COMPLETE_FRAME -> HUNT_HEADER
+     ^              |                              |              |
+     |              | length > MAX_PAYLOAD         | CRC mismatch | deserialization failure
+     +--------------+------------------------------+--------------+
+                          resync: rewind to header_start + 1
 ```
 
-On CRC failure or invalid length, the parser rewinds to one byte after the `0xAA` that started the failed packet attempt and re-enters `HUNT_HEADER`. This handles the case where an apparent header (`0xAA55`) was actually random data mid-stream. A `MAX_PAYLOAD` guard of 4096 bytes prevents malformed length fields from causing unbounded allocation.
+`READ_CRC` validates the CRC16 checksum. On success, `COMPLETE_FRAME` deserializes the payload into a `Telemetry` struct, compacts the buffer, resets parser state, and invokes the callback. On CRC failure, invalid length, or deserialization failure, the parser rewinds to one byte after the `0xAA` that started the failed packet attempt and re-enters `HUNT_HEADER`. This handles the case where an apparent header (`0xAA55`) was actually random data mid-stream. A `MAX_PAYLOAD` guard of 4096 bytes prevents malformed length fields from causing unbounded allocation.
 
 ### Wire Format
 

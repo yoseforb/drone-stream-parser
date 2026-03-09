@@ -281,7 +281,8 @@ std::vector<uint8_t> serialize(const Telemetry& tel)
 HUNT_HEADER       → scan byte-by-byte for 0xAA then 0x55
 READ_LENGTH       → collect 2-byte length field
 READ_PAYLOAD      → collect N bytes of payload data
-READ_CRC          → collect 2-byte CRC field
+READ_CRC          → collect 2-byte CRC field and validate checksum
+COMPLETE_FRAME    → deserialize payload, compact buffer, invoke callback
 ```
 
 **Constants**:
@@ -318,13 +319,18 @@ void feed(std::span<const uint8_t> chunk) noexcept
    - Accumulate 2 bytes
    - Compute CRC16 over HEADER + LENGTH + PAYLOAD
    - Compare to received CRC
-   - **If match** (valid packet):
-     - Deserialize PAYLOAD → Telemetry
-     - Invoke callback with Telemetry
-     - Reset to `HUNT_HEADER`
+   - **If match**: advance to `COMPLETE_FRAME`
    - **If mismatch** (corrupted packet):
      - Rewind: resume scanning from byte after last header position (resync)
      - Return to `HUNT_HEADER`
+
+5. **COMPLETE_FRAME**:
+   - Deserialize PAYLOAD → Telemetry
+   - Compact the accumulation buffer (remove consumed bytes)
+   - Reset parser state
+   - Invoke callback with Telemetry
+   - **If deserialization fails**: resync from byte after last header position, return to `HUNT_HEADER`
+   - **If successful**: return to `HUNT_HEADER`
 
 **Responsibility**:
 - Implement resilient parsing with automatic recovery
@@ -793,13 +799,11 @@ stateDiagram-v2
 
     READ_PAYLOAD --> READ_CRC: collected N bytes
 
-    READ_CRC --> VALIDATE: got 2 bytes
+    READ_CRC --> COMPLETE_FRAME: CRC match
+    READ_CRC --> HUNT_HEADER: CRC mismatch (resync)
 
-    VALIDATE --> CALLBACK: CRC match
-    VALIDATE --> RESYNC: CRC mismatch
-
-    CALLBACK --> HUNT_HEADER: invoke callback + reset
-    RESYNC --> HUNT_HEADER: resume after last header
+    COMPLETE_FRAME --> HUNT_HEADER: deserialize + callback + reset
+    COMPLETE_FRAME --> HUNT_HEADER: deserialization failure (resync)
 ```
 
 ---

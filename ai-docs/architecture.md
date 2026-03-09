@@ -242,21 +242,24 @@ Total payload size: `42 + id_len` bytes.
 ### States and transitions
 
 ```
-HUNT_HEADER → READ_LENGTH → READ_PAYLOAD → READ_CRC → HUNT_HEADER
-     ↑              │                            │
-     │              │ length > MAX_PAYLOAD        │ CRC mismatch
-     └──────────────┴────────────────────────────┘
+HUNT_HEADER → READ_LENGTH → READ_PAYLOAD → READ_CRC → COMPLETE_FRAME → HUNT_HEADER
+     ↑              │                            │              │
+     │              │ length > MAX_PAYLOAD        │ CRC mismatch │ deserialization failure
+     └──────────────┴────────────────────────────┴──────────────┘
                   resync: rewind to header_start + 1
 ```
 
 1. **HUNT_HEADER** — scan byte-by-byte for 0xAA then 0x55
 2. **READ_LENGTH** — read 2 bytes → uint16_t. If > MAX_PAYLOAD (4096): resync
 3. **READ_PAYLOAD** — buffer `length` bytes
-4. **READ_CRC** — read 2 bytes, compute CRC over [header + length + payload]
-   - Match → deserialize Telemetry, emit via callback → HUNT_HEADER
+4. **READ_CRC** — read 2 bytes, validate CRC over [header + length + payload]
+   - Match → transition to COMPLETE_FRAME
    - Mismatch → increment crc_fail_count, log, resync → HUNT_HEADER
+5. **COMPLETE_FRAME** — deserialize payload into Telemetry, compact buffer, reset state, invoke callback
+   - Success → HUNT_HEADER
+   - Deserialization failure → resync → HUNT_HEADER
 
-**Resync strategy:** On CRC failure or invalid length, rewind buffer read position to one byte after the 0xAA that started this packet attempt. The "header" we found may have been random data. Re-enter HUNT_HEADER to find the next real sync point. O(n), minimal data loss.
+**Resync strategy:** On CRC failure, invalid length, or deserialization failure, rewind buffer read position to one byte after the 0xAA that started this packet attempt. The "header" we found may have been random data. Re-enter HUNT_HEADER to find the next real sync point. O(n), minimal data loss.
 
 **MAX_PAYLOAD guard (4096):** Prevents a malformed length field from causing unbounded memory allocation.
 
@@ -390,7 +393,7 @@ drone-stream-parser/
 | 23 | Directory layout | Flat — one dir per CMake target | Self-contained, matches targets 1:1 |
 | 24 | CMake targets | 6 targets | domain, protocol, common (INTERFACE), drone_server, drone_client, tests |
 | 25 | Wire format | uint16_t string prefix, little-endian, CRC-16/CCITT | Consistent field sizes, matches target platform |
-| 26 | Parser | 4-state machine, rewind resync | HUNT→LENGTH→PAYLOAD→CRC, MAX_PAYLOAD=4096 guard |
+| 26 | Parser | 5-state machine, rewind resync | HUNT→LENGTH→PAYLOAD→CRC→COMPLETE_FRAME, MAX_PAYLOAD=4096 guard |
 | 27 | Parser stats | Internal to parser, getters for counts | Not a domain concern, logged at shutdown |
 | 28 | Client scenarios | 7 scenarios | normal, fragmented, corrupt, stress, alert, multi-drone, interleaved |
 | 29 | Integration verification | Structured stdout + shutdown summary | No query API. Unit tests prove correctness; client demos + console output for examiner |
